@@ -6,6 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "test": "node server.js --test"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "formidable": "^3.5.1",
+    "jsonfile": "^6.1.0"
   }
 }
-

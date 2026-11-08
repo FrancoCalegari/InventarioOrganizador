@@ -1,3 +1,4 @@
 /.dockerignore
 /data
 /package-lock.json
+/storage*

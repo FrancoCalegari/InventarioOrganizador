@@ -49,7 +49,7 @@
       white-space: nowrap;
     }
 
-    /* Vista de Autenticación (Mobile-First, parte superior para evitar bloqueo de teclado) */
+    /* Vista de Autenticación */
     .auth-shell {
       width: 100%;
       max-width: 420px;
@@ -78,9 +78,7 @@
       align-items: stretch;
     }
 
-    .password-row input {
-      flex: 1;
-    }
+    .password-row input { flex: 1; }
 
     .toggle-pwd-btn {
       font-size: 0.88rem;
@@ -94,7 +92,7 @@
       white-space: nowrap;
     }
 
-    /* Vista Principal de Inventario */
+    /* Vista Principal */
     .app-shell {
       display: flex;
       flex-direction: column;
@@ -131,7 +129,7 @@
     .user-session-bar {
       display: flex;
       align-items: center;
-      gap: 0.45rem;
+      gap: 0.4rem;
       flex-wrap: wrap;
     }
 
@@ -154,14 +152,14 @@
       font-size: 0.85rem;
       font-weight: 600;
       color: var(--text-muted);
-      max-width: 170px;
+      max-width: 160px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
     .user-select {
-      font-size: 0.92rem;
+      font-size: 0.9rem;
       padding: 0.35rem 0.65rem;
       min-height: 40px;
       border-radius: 999px;
@@ -179,12 +177,13 @@
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--text);
-      font-size: 0.88rem;
+      font-size: 0.86rem;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 0.25rem;
     }
 
     .toolbar {
@@ -240,11 +239,11 @@
     }
 
     .summary-pill {
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 700;
       color: var(--primary);
       background: #eff6ff;
-      padding: 0.45rem 0.75rem;
+      padding: 0.45rem 0.7rem;
       border-radius: 10px;
       white-space: nowrap;
     }
@@ -268,9 +267,66 @@
       color: var(--primary);
     }
 
+    /* Galería Mobile-First */
+    .main-container {
+      width: 100%;
+      max-width: 960px;
+      margin-inline: auto;
+      padding: 1rem;
+      flex: 1;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.85rem;
+    }
+
+    .item-card-wrapper { container-type: inline-size; }
+
+    .item-card {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      padding: 0;
+      text-align: start;
+      display: flex;
+      flex-direction: column;
+    }
+
     .item-card[data-selected="true"] {
       border: 2.5px solid var(--primary);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    }
+
+    .thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      background: var(--surface-muted);
+      overflow: hidden;
+    }
+
+    .thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+    }
+
+    .thumb-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      color: var(--text-muted);
     }
 
     .card-check-label {
@@ -298,122 +354,38 @@
       cursor: pointer;
     }
 
-    .selection-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      width: 100%;
-      max-width: 520px;
-      background: #0f172a;
-      color: #fff;
-      padding: 0.5rem 0.75rem;
-      border-radius: 14px;
-    }
-
-    .selection-bar-actions {
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-    }
-
-    .check-options-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.65rem;
-      margin-block-end: 0.9rem;
-    }
-
-    .check-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      font-size: 0.88rem;
-      font-weight: 600;
-      padding: 0.4rem 0.7rem;
-      border-radius: 999px;
-      background: var(--surface-muted);
-      border: 1px solid var(--border);
-      cursor: pointer;
-      margin: 0;
-    }
-
-    .check-pill input[type="checkbox"] {
-      accent-color: var(--primary);
-      width: 1.05rem;
-      height: 1.05rem;
-      margin: 0;
-    }
-
-    /* Galería Mobile-First */
-    .main-container {
-      width: 100%;
-      max-width: 960px;
-      margin-inline: auto;
-      padding: 1rem;
-      flex: 1;
-    }
-
-    .gallery-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
-      gap: 0.85rem;
-    }
-
-    .item-card-wrapper {
-      container-type: inline-size;
-    }
-
-    .item-card {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--surface);
-      overflow: hidden;
-      box-shadow: var(--shadow);
-      cursor: pointer;
-      padding: 0;
-      text-align: start;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .thumb-wrap {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 1;
-      background: var(--surface-muted);
-      overflow: hidden;
-    }
-
-    .thumb-wrap img {
-      width: 100%;
-      height: 100%;
-      aspect-ratio: 1;
-      object-fit: cover;
-      display: block;
-    }
-
     .badge-price {
       position: absolute;
-      bottom: 0.5rem;
-      inset-inline-end: 0.5rem;
-      background: rgba(15, 23, 42, 0.82);
+      bottom: 0.45rem;
+      inset-inline-end: 0.45rem;
+      background: rgba(15, 23, 42, 0.84);
       color: #fff;
-      font-size: 0.8rem;
+      font-size: 0.76rem;
       font-weight: 700;
-      padding: 0.2rem 0.5rem;
+      padding: 0.18rem 0.5rem;
+      border-radius: 999px;
+    }
+
+    .badge-qty {
+      position: absolute;
+      bottom: 0.45rem;
+      inset-inline-start: 0.45rem;
+      background: rgba(37, 99, 235, 0.9);
+      color: #fff;
+      font-size: 0.74rem;
+      font-weight: 800;
+      padding: 0.16rem 0.48rem;
       border-radius: 999px;
     }
 
     .badge-status {
       position: absolute;
-      top: 0.5rem;
-      inset-inline-start: 0.5rem;
-      font-size: 0.75rem;
+      top: 0.45rem;
+      inset-inline-start: 0.45rem;
+      font-size: 0.72rem;
       font-weight: 700;
       text-transform: uppercase;
-      padding: 0.2rem 0.55rem;
+      padding: 0.18rem 0.5rem;
       border-radius: 999px;
       color: #fff;
     }
@@ -421,12 +393,13 @@
     .badge-status[data-motivo="vendido"] { background: var(--emerald); }
     .badge-status[data-motivo="desechado"] { background: var(--amber); }
     .badge-status[data-motivo="roto"] { background: var(--danger); }
+    .badge-status[data-motivo="procesando"] { background: #7c3aed; }
 
     .card-body {
       padding: 0.65rem 0.75rem;
       display: flex;
       flex-direction: column;
-      gap: 0.2rem;
+      gap: 0.18rem;
     }
 
     .card-title {
@@ -439,14 +412,28 @@
       text-overflow: ellipsis;
     }
 
-    .card-meta {
+    .card-sub {
       margin: 0;
       font-size: 0.78rem;
       color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-rel-chip {
+      margin-block-start: 0.2rem;
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: #eff6ff;
+      padding: 0.15rem 0.45rem;
+      border-radius: 6px;
+      align-self: flex-start;
     }
 
     @container (min-width: 220px) {
-      .card-title { font-size: 1.05rem; }
+      .card-title { font-size: 1.04rem; }
       .card-body { padding: 0.8rem 0.9rem; }
     }
 
@@ -486,10 +473,29 @@
       box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.45);
     }
 
+    .selection-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      width: 100%;
+      max-width: 520px;
+      background: #0f172a;
+      color: #fff;
+      padding: 0.5rem 0.75rem;
+      border-radius: 14px;
+    }
+
+    .selection-bar-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
     /* Dialogs y Formularios */
     dialog {
-      width: min(94vw, 500px);
-      max-height: 90dvh;
+      width: min(95vw, 540px);
+      max-height: 92dvh;
       border: 0;
       border-radius: 18px;
       padding: 0;
@@ -498,9 +504,7 @@
       box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
     }
 
-    dialog:modal {
-      overscroll-behavior: contain;
-    }
+    dialog:modal { overscroll-behavior: contain; }
 
     dialog::backdrop {
       background: rgba(15, 23, 42, 0.55);
@@ -523,35 +527,31 @@
 
     .dialog-header h2 {
       margin: 0;
-      font-size: 1.15rem;
+      font-size: 1.12rem;
     }
 
-    .dialog-body {
-      padding: 1.15rem;
-    }
+    .dialog-body { padding: 1.1rem; }
 
-    .form-group {
-      margin-block-end: 1.1rem;
-    }
+    .form-group { margin-block-end: 0.95rem; }
 
     .form-row-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
+      gap: 0.65rem;
     }
 
     label, legend {
       display: block;
       font-weight: 600;
-      font-size: 0.92rem;
-      margin-block-end: 0.35rem;
+      font-size: 0.9rem;
+      margin-block-end: 0.3rem;
       color: var(--text);
     }
 
     .optional-tag {
       font-weight: 400;
       color: var(--text-muted);
-      font-size: 0.82rem;
+      font-size: 0.8rem;
     }
 
     input[type="text"],
@@ -560,11 +560,12 @@
     input[type="number"],
     input[type="date"],
     input[type="search"],
+    select.form-select,
     textarea {
       width: 100%;
       font-size: 1rem;
-      padding: 0.7rem 0.85rem;
-      min-height: 48px;
+      padding: 0.65rem 0.8rem;
+      min-height: 46px;
       border: 1.5px solid var(--border);
       border-radius: 10px;
       background: var(--surface);
@@ -573,13 +574,11 @@
     }
 
     @media (pointer: coarse) {
-      input, button {
-        min-height: 52px;
-      }
+      input, button, select.form-select { min-height: 50px; }
     }
 
     textarea {
-      min-height: 78px;
+      min-height: 72px;
       resize: vertical;
     }
 
@@ -596,35 +595,122 @@
       background: #fef2f2;
     }
 
+    /* Caja de Multimedia (Múltiples Imágenes y Videos) */
     .photo-box {
       border: 2px dashed var(--border);
       border-radius: 14px;
       overflow: hidden;
       background: var(--surface-muted);
-      margin-block-end: 1.1rem;
-      text-align: center;
+      margin-block-end: 1rem;
+      padding: 0.6rem;
     }
 
-    .photo-preview, .camera-video {
+    .camera-video {
       width: 100%;
       aspect-ratio: 4 / 3;
       object-fit: cover;
       display: block;
+      border-radius: 10px;
+      margin-block-end: 0.5rem;
+      background: #000;
+    }
+
+    .media-Queue-strip {
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding-block-end: 0.4rem;
+    }
+
+    .media-thumb-item {
+      position: relative;
+      width: 78px;
+      height: 78px;
+      flex: 0 0 auto;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1.5px solid var(--border);
+      background: #000;
+    }
+
+    .media-thumb-item img,
+    .media-thumb-item video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .media-thumb-remove {
+      position: absolute;
+      top: 2px;
+      inset-inline-end: 2px;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      border: 0;
+      background: rgba(15, 23, 42, 0.82);
+      color: #fff;
+      font-size: 0.72rem;
+      cursor: pointer;
     }
 
     .photo-actions {
       display: flex;
-      gap: 0.5rem;
-      padding: 0.65rem;
+      gap: 0.45rem;
       justify-content: center;
       flex-wrap: wrap;
+      margin-block-start: 0.35rem;
     }
 
-    .btn {
-      font-size: 1rem;
+    /* Selector de Objetos Relacionados ("Contiene") */
+    .relations-box {
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 0.75rem;
+      background: var(--surface-muted);
+      margin-block-end: 1rem;
+    }
+
+    .rel-picker-row {
+      display: flex;
+      gap: 0.45rem;
+      align-items: center;
+    }
+
+    .rel-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-block-start: 0.6rem;
+    }
+
+    .rel-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      background: var(--surface);
+      padding: 0.45rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 0.88rem;
       font-weight: 600;
-      padding: 0.65rem 1rem;
-      min-height: 48px;
+    }
+
+    .rel-row input[type="number"] {
+      width: 72px;
+      min-height: 36px;
+      padding: 0.25rem 0.45rem;
+      text-align: center;
+    }
+
+    /* Botones y Controles */
+    .btn {
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.55rem 0.9rem;
+      min-height: 46px;
       border-radius: 10px;
       border: 1px solid var(--border);
       background: var(--surface);
@@ -633,7 +719,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.4rem;
+      gap: 0.35rem;
     }
 
     .btn-primary {
@@ -652,72 +738,122 @@
     fieldset.radio-fieldset {
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 0.85rem;
-      margin: 0 0 1rem;
+      padding: 0.75rem;
+      margin: 0 0 0.95rem;
     }
 
     .radio-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 0.5rem;
+      gap: 0.45rem;
     }
 
     .radio-option {
       display: flex;
       align-items: center;
-      gap: 0.4rem;
-      padding: 0.5rem;
+      gap: 0.35rem;
+      padding: 0.45rem 0.55rem;
       border: 1.5px solid var(--border);
       border-radius: 9px;
       cursor: pointer;
-      font-size: 0.88rem;
+      font-size: 0.86rem;
       font-weight: 600;
+      margin: 0;
+      background: var(--surface);
+    }
+
+    .check-options-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      margin-block-end: 0.85rem;
+    }
+
+    .check-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.86rem;
+      font-weight: 600;
+      padding: 0.38rem 0.68rem;
+      border-radius: 999px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      cursor: pointer;
       margin: 0;
     }
 
-    .detail-photo {
+    /* Carrusel Multimedia en Detalle */
+    .media-carousel {
+      display: flex;
+      gap: 0.65rem;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      margin-block-end: 0.9rem;
+      padding-block-end: 0.25rem;
+    }
+
+    .media-slide {
+      flex: 0 0 100%;
+      scroll-snap-align: center;
+      position: relative;
+      background: #0f172a;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .media-slide img,
+    .media-slide video {
       width: 100%;
       aspect-ratio: 4 / 3;
       object-fit: contain;
-      background: #0f172a;
-      border-radius: 12px;
-      margin-block-end: 1rem;
+      display: block;
+    }
+
+    .media-slide-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0.65rem;
+      background: rgba(15, 23, 42, 0.88);
+      color: #cbd5e1;
+      font-size: 0.78rem;
     }
 
     .meta-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.6rem;
-      margin-block-end: 1rem;
+      gap: 0.55rem;
+      margin-block-end: 0.9rem;
     }
 
     .meta-box {
       background: var(--surface-muted);
-      padding: 0.65rem 0.8rem;
+      padding: 0.6rem 0.75rem;
       border-radius: 10px;
     }
 
     .meta-label {
-      font-size: 0.76rem;
+      font-size: 0.74rem;
       color: var(--text-muted);
       display: block;
     }
 
     .meta-value {
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 700;
     }
 
     .detail-section {
       background: var(--surface-muted);
-      padding: 0.75rem 0.9rem;
+      padding: 0.7rem 0.85rem;
       border-radius: 10px;
-      margin-block-end: 0.85rem;
+      margin-block-end: 0.75rem;
     }
 
     .detail-section h3 {
-      margin: 0 0 0.25rem;
-      font-size: 0.85rem;
+      margin: 0 0 0.3rem;
+      font-size: 0.84rem;
       color: var(--text-muted);
     }
 
@@ -726,17 +862,48 @@
       white-space: pre-wrap;
     }
 
+    .rel-link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin: 0.2rem 0.3rem 0.2rem 0;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--primary);
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .progress-bar-wrap {
+      width: 100%;
+      height: 8px;
+      background: var(--surface-muted);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-block-end: 0.65rem;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--primary);
+      transition: width 0.15s;
+    }
+
     .error-msg {
       color: var(--danger);
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       font-weight: 600;
-      margin: 0 0 0.85rem;
+      margin: 0 0 0.75rem;
     }
   </style>
 </head>
 <body>
 
-  <!-- VISTA 1: Sistema de Usuarios (Iniciar Sesión / Crear Cuenta) -->
+  <!-- VISTA 1: Autenticación -->
   <section id="auth-view" class="auth-shell" hidden>
     <div class="auth-card">
       <h1 class="auth-brand">📦 Inventario Personal</h1>
@@ -750,7 +917,6 @@
         </button>
       </div>
 
-      <!-- Formulario de Inicio de Sesión -->
       <form id="login-form" method="POST" action="/api/auth/login">
         <div class="form-group">
           <label for="login-email">Correo electrónico</label>
@@ -794,7 +960,6 @@
         </button>
       </form>
 
-      <!-- Formulario de Registro -->
       <form id="register-form" method="POST" action="/api/auth/register" hidden>
         <div class="form-group">
           <label for="register-email">Correo electrónico</label>
@@ -841,16 +1006,19 @@
     </div>
   </section>
 
-  <!-- VISTA 2: Index Básico del Inventario por Usuario -->
+  <!-- VISTA 2: Galería e Inventario -->
   <div id="app-view" class="app-shell" hidden>
-    <label for="quick-camera-input" class="visually-hidden">Capturar foto del objeto</label>
-    <input
-      type="file"
-      id="quick-camera-input"
-      class="visually-hidden"
-      accept="image/*"
-      capture="environment"
-    >
+    <!-- Inputs ocultos para cámara de fotos, cámara de video y galería múltiple -->
+    <label for="quick-camera-input" class="visually-hidden">Capturar foto</label>
+    <input type="file" id="quick-camera-input" class="visually-hidden" accept="image/*" capture="environment">
+
+    <label for="quick-video-input" class="visually-hidden">Grabar video</label>
+    <input type="file" id="quick-video-input" class="visually-hidden" accept="video/*" capture="environment">
+
+    <label for="multi-media-input" class="visually-hidden">Seleccionar fotos o videos</label>
+    <input type="file" id="multi-media-input" class="visually-hidden" accept="image/*,video/*" multiple>
+
+    <datalist id="guardado-en-list"></datalist>
 
     <header class="app-header">
       <div class="header-top">
@@ -860,9 +1028,9 @@
           <span id="user-role-badge" class="role-badge">user</span>
           <span id="user-email-display" class="user-email-label"></span>
 
-          <!-- Controles exclusivos para Admin -->
           <label for="user-select" class="visually-hidden">Ver inventario de usuario</label>
           <select id="user-select" class="user-select" hidden></select>
+          <button type="button" id="jobs-btn" class="icon-btn" title="Cola de compresión de videos" hidden>🎬 Cola</button>
           <button type="button" id="new-user-btn" class="icon-btn" title="Crear usuario (Admin)" hidden>+ Usuario</button>
 
           <button type="button" id="logout-btn" class="icon-btn">Salir</button>
@@ -885,13 +1053,13 @@
             type="search"
             id="search-input"
             class="search-input"
-            placeholder="Buscar objeto..."
+            placeholder="Buscar por nombre, marca, modelo, ubicación..."
             autocomplete="off"
             autocorrect="off"
             spellcheck="false"
             enterkeyhint="search"
           >
-          <div id="total-value-pill" class="summary-pill">$0.00</div>
+          <div id="total-value-pill" class="summary-pill">$ 0 ARS</div>
           <button type="button" id="toggle-select-all-btn" class="select-mode-btn" aria-pressed="false">
             ☑️ Seleccionar visibles
           </button>
@@ -908,7 +1076,6 @@
         📸 Sacar Foto y Añadir Objeto
       </button>
 
-      <!-- Barra flotante cuando hay objetos seleccionados para la lista -->
       <div id="selection-bar" class="selection-bar" hidden>
         <span id="selection-count-label" style="font-weight: 700; font-size: 0.92rem;">0 seleccionados</span>
         <div class="selection-bar-actions">
@@ -923,7 +1090,7 @@
     </nav>
   </div>
 
-  <!-- MODAL 1: Añadir Objeto (Foto + Formulario Simple) -->
+  <!-- MODAL 1: Añadir / Editar Objeto y Relacionar Objetos -->
   <dialog id="add-dialog" aria-labelledby="add-dialog-title">
     <div class="dialog-header">
       <h2 id="add-dialog-title">Añadir Objeto</h2>
@@ -931,52 +1098,104 @@
     </div>
 
     <form id="add-form" class="dialog-body" method="POST" action="/api/items">
+      <!-- Multimedia: Fotos y Videos -->
       <div class="photo-box">
-        <img id="photo-preview" class="photo-preview" alt="Vista previa del objeto" hidden>
         <video id="camera-video" class="camera-video" autoplay playsinline muted hidden></video>
+        <div id="media-queue-strip" class="media-Queue-strip"></div>
         <div class="photo-actions">
-          <button type="button" id="btn-take-camera" class="btn">📷 Cámara</button>
-          <button type="button" id="btn-shutter" class="btn btn-primary" hidden>🔴 Capturar Foto</button>
-          <button type="button" id="btn-pick-file" class="btn">🖼️ Galería / Archivo</button>
+          <button type="button" id="btn-take-camera" class="btn">📷 Foto</button>
+          <button type="button" id="btn-shutter" class="btn btn-primary" style="width: auto;" hidden>🔴 Capturar</button>
+          <button type="button" id="btn-take-video" class="btn">🎥 Video</button>
+          <button type="button" id="btn-pick-file" class="btn">🖼️ Galería / Archivos</button>
         </div>
-      </div>
-
-      <div class="form-group">
-        <label for="item-nombre">Nombre *</label>
-        <input type="text" id="item-nombre" name="nombre" required maxlength="120" enterkeyhint="next" placeholder="Ej: Cámara, Bicicleta, Taladro...">
       </div>
 
       <div class="form-row-2">
         <div class="form-group">
+          <label for="item-nombre">Nombre *</label>
+          <input type="text" id="item-nombre" name="nombre" required maxlength="120" placeholder="Ej: Neceser, Tablet TCL 10...">
+        </div>
+        <div class="form-group">
+          <label for="item-cantidad">Cantidad *</label>
+          <input type="number" id="item-cantidad" name="cantidad" required min="1" step="1" value="1" inputmode="numeric">
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label for="item-marca">Marca <span class="optional-tag">(opcional)</span></label>
+          <input type="text" id="item-marca" name="marca" maxlength="80" placeholder="Ej: Motorola, TCL, Delta...">
+        </div>
+        <div class="form-group">
+          <label for="item-modelo">Modelo <span class="optional-tag">(opcional)</span></label>
+          <input type="text" id="item-modelo" name="modelo" maxlength="80" placeholder="Ej: G200, Cat6 1m...">
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label for="item-guardado-en">Guardado en <span class="optional-tag">(opcional)</span></label>
+          <input type="text" id="item-guardado-en" name="guardado_en" list="guardado-en-list" maxlength="100" placeholder="Ej: Placard, Cajón escritorio...">
+        </div>
+        <div class="form-group">
           <label for="item-fecha-obtenido">Fecha obtenido *</label>
           <input type="date" id="item-fecha-obtenido" name="fecha_obtenido" required>
         </div>
+      </div>
 
+      <div class="form-row-2">
         <div class="form-group">
-          <label for="item-precio">Precio <span class="optional-tag">(opcional)</span></label>
+          <label for="item-precio">Precio unitario <span class="optional-tag">(opcional)</span></label>
           <input type="number" id="item-precio" name="precio" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
         </div>
+        <fieldset class="radio-fieldset" style="margin-block-end: 0.95rem; padding: 0.5rem 0.65rem;">
+          <legend style="font-size: 0.84rem;">Moneda (default ARS)</legend>
+          <div class="radio-grid" style="grid-template-columns: 1fr 1fr;">
+            <label class="radio-option">
+              <input type="radio" name="moneda" value="ARS" checked>
+              <span>$ ARS</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="moneda" value="USD">
+              <span>US$ USD</span>
+            </label>
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- Relaciones: Objetos que este objeto contiene -->
+      <div class="relations-box">
+        <label for="rel-item-select">📦 Objetos relacionados que contiene <span class="optional-tag">(ej. Neceser → contiene objetos)</span></label>
+        <div class="rel-picker-row">
+          <select id="rel-item-select" class="form-select" style="flex: 1;"></select>
+          <button type="button" id="btn-add-relation" class="btn" style="white-space: nowrap;">+ Vincular</button>
+        </div>
+        <div id="rel-selected-list" class="rel-list"></div>
       </div>
 
       <div class="form-group">
         <label for="item-descripcion">Descripción <span class="optional-tag">(opcional)</span></label>
-        <textarea id="item-descripcion" name="descripcion" rows="2" placeholder="Descripción opcional..."></textarea>
+        <textarea id="item-descripcion" name="descripcion" rows="2" placeholder="Descripción general del objeto..."></textarea>
       </div>
 
       <div class="form-group">
-        <label for="item-detalles">Detalles relacionados con el objeto <span class="optional-tag">(opcional)</span></label>
-        <textarea id="item-detalles" name="detalles" rows="2" placeholder="Ubicación, serie, estado, garantía..."></textarea>
+        <label for="item-detalles">Detalles adicionales <span class="optional-tag">(opcional)</span></label>
+        <textarea id="item-detalles" name="detalles" rows="2" placeholder="Número de serie, estado, accesorios..."></textarea>
+      </div>
+
+      <div id="upload-progress-wrap" class="progress-bar-wrap" hidden>
+        <div id="upload-progress-fill" class="progress-bar-fill"></div>
       </div>
 
       <p id="add-error" class="error-msg" role="alert" hidden></p>
 
       <button type="submit" id="submit-add-btn" class="btn btn-primary">
-        Añadir al Inventario
+        Guardar en el Inventario
       </button>
     </form>
   </dialog>
 
-  <!-- MODAL 2: Detalle del Objeto y Dar de Baja -->
+  <!-- MODAL 2: Detalle del Objeto, Relaciones y Dar de Baja -->
   <dialog id="detail-dialog" aria-labelledby="detail-dialog-title" closedby="any">
     <div class="dialog-header">
       <h2 id="detail-dialog-title">Detalle del Objeto</h2>
@@ -1034,7 +1253,6 @@
           name="list_title"
           value="Lista de Inventario"
           maxlength="80"
-          placeholder="Ej: Mudanza, Objetos en venta, Mi inventario..."
         >
       </div>
 
@@ -1043,11 +1261,15 @@
         <div class="check-options-row">
           <label class="check-pill">
             <input type="checkbox" id="opt-include-price" checked>
-            <span>Precios y total</span>
+            <span>Precios y totales</span>
+          </label>
+          <label class="check-pill">
+            <input type="checkbox" id="opt-include-relations" checked>
+            <span>Objetos contenidos</span>
           </label>
           <label class="check-pill">
             <input type="checkbox" id="opt-include-desc" checked>
-            <span>Descripción y detalles</span>
+            <span>Marca, ubicación y detalles</span>
           </label>
           <label class="check-pill">
             <input type="checkbox" id="opt-include-dates">
@@ -1058,20 +1280,25 @@
 
       <div class="form-group">
         <label for="list-text-output">Texto generado (editable antes de compartir)</label>
-        <textarea id="list-text-output" rows="8" style="font-family: ui-monospace, monospace; font-size: 0.9rem;"></textarea>
+        <textarea id="list-text-output" rows="9" style="font-family: ui-monospace, monospace; font-size: 0.88rem;"></textarea>
       </div>
 
       <p id="share-feedback" role="status" aria-live="polite" style="color: var(--emerald); font-weight: 700; margin: 0 0 0.75rem;" hidden></p>
 
       <div class="form-row-2">
-        <button type="button" id="btn-copy-list" class="btn">
-          📋 Copiar Texto
-        </button>
-        <button type="button" id="btn-share-list" class="btn btn-primary">
-          📲 Compartir
-        </button>
+        <button type="button" id="btn-copy-list" class="btn">📋 Copiar Texto</button>
+        <button type="button" id="btn-share-list" class="btn btn-primary">📲 Compartir</button>
       </div>
     </div>
+  </dialog>
+
+  <!-- MODAL 5: Cola de Tareas de Compresión de Video (Admin) -->
+  <dialog id="jobs-dialog" aria-labelledby="jobs-dialog-title" closedby="any">
+    <div class="dialog-header">
+      <h2 id="jobs-dialog-title">🎬 Cola de Compresión de Video</h2>
+      <button type="button" class="icon-btn" id="close-jobs-dialog" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="dialog-body" id="jobs-body"></div>
   </dialog>
 
   <script type="module" src="/app.js"></script>

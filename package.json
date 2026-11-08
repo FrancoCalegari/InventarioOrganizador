@@ -1,15 +1,12 @@
 {
   "name": "inventario-organizador",
-  "version": "1.0.0",
-  "description": "Organizador de inventario personal mobile-first con SQLite local y Cloud Storage local",
+  "version": "2.0.0",
+  "description": "Organizador de inventario personal mobile-first con SQLite local, Cloud Storage local y cola de compresión de video",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node server.js --test"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "formidable": "^3.5.1",
-    "jsonfile": "^6.1.0"
+    "worker": "node worker.js",
+    "dev": "node worker.js & node server.js",
+    "test": "node test.js"
   }
 }

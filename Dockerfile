@@ -1,8 +1,11 @@
 FROM node:22-alpine
 
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
 
-COPY package.json server.js ./
+COPY package.json server.js worker.js ./
+COPY lib ./lib
 COPY public ./public
 
 RUN mkdir -p /app/data /app/storage/buckets/items && \
@@ -18,4 +21,3 @@ ENV NODE_ENV=production \
 EXPOSE 3000
 
 CMD ["node", "server.js"]
-

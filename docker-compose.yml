@@ -1,20 +1,27 @@
 services:
-  inventario:
+  web:
     build: .
-    container_name: inventario-organizador
+    container_name: inventario-web
+    command: ["node", "server.js"]
     ports:
       - "${PORT:-3000}:3000"
-    environment:
-      - PORT=3000
-      - SESSION_SECRET=${SESSION_SECRET:-inv-local-secret-key-2026}
-      - DATA_DIR=/app/data
-      - BUCKET_DIR=/app/storage/buckets/items
-    volumes:
-      - inventario_sql:/app/data
-      - inventario_storage:/app/storage
+    environment: &env
+      PORT: "3000"
+      SESSION_SECRET: "${SESSION_SECRET:-inv-local-secret-key-2026}"
+      DATA_DIR: "/app/data"
+      BUCKET_DIR: "/app/storage/buckets/items"
+    volumes: &vols
+      - ./data:/app/data
+      - ./storage/buckets/items:/app/storage/buckets/items
     restart: unless-stopped
 
-volumes:
-  inventario_sql:
-  inventario_storage:
-
+  worker:
+    build: .
+    container_name: inventario-worker
+    command: ["node", "worker.js"]
+    environment: *env
+    volumes: *vols
+    cpus: 1.0
+    mem_limit: 768m
+    stop_grace_period: 60s
+    restart: unless-stopped

@@ -3,26 +3,27 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { Readable } from 'node:stream';
-import { DatabaseSync } from 'node:sqlite';
-import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { openDb, tx } from './lib/db.js';
+import { createBucket, IMAGE_TYPES, VIDEO_TYPES, MIME_BY_EXT } from './lib/storage.js';
+import { compressImageInBucket, optimizeExistingImages } from './lib/jobs.js';
 
 const ROOT_DIR = import.meta.dirname;
-const IS_TEST = process.argv.includes('--test');
-const DATA_DIR = IS_TEST
-  ? path.join(ROOT_DIR, 'data/.test')
-  : process.env.DATA_DIR || path.join(ROOT_DIR, 'data');
-const BUCKET_DIR = IS_TEST
-  ? path.join(ROOT_DIR, 'storage/.test-bucket')
-  : process.env.BUCKET_DIR || path.join(ROOT_DIR, 'storage/buckets/items');
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT_DIR, 'data');
+const BUCKET_DIR = process.env.BUCKET_DIR || path.join(ROOT_DIR, 'storage/buckets/items');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'inv-local-secret-key-2026';
 
-fs.mkdirSync(DATA_DIR, { recursive: true });
-fs.mkdirSync(BUCKET_DIR, { recursive: true });
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // las imágenes llegan ya comprimidas desde el cliente
+const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+const MONEDAS = ['ARS', 'USD'];
+const MOTIVOS = ['vendido', 'desechado', 'roto'];
+
+export const db = openDb(DATA_DIR);
+export const bucket = createBucket(BUCKET_DIR);
 
 // ---------------------------------------------------------------------------
-// 1. Helpers de Contraseña y Sesión (node:crypto stdlib)
+// 1. Contraseñas y sesión (node:crypto)
 // ---------------------------------------------------------------------------
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -48,7 +49,9 @@ function verifyToken(token) {
   if (!token || !token.includes('.')) return null;
   const [data, sig] = token.split('.');
   const expected = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
-  if (sig !== expected) return null;
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    return null;
+  }
   try {
     return JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
   } catch {
@@ -57,9 +60,8 @@ function verifyToken(token) {
 }
 
 function parseCookies(req) {
-  const header = req.headers.cookie || '';
   return Object.fromEntries(
-    header
+    (req.headers.cookie || '')
       .split(';')
       .map((c) => c.trim().split('='))
       .filter(([k]) => k)
@@ -67,119 +69,19 @@ function parseCookies(req) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// 2. Base de Datos SQL Local (node:sqlite) y Seed de Admin
-// ---------------------------------------------------------------------------
-const db = new DatabaseSync(path.join(DATA_DIR, 'inventory.db'));
-db.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;`);
-
-// Migración automática si existía tabla users previa sin email/password_hash/role
-const userCols = db.prepare(`PRAGMA table_info(users)`).all();
-if (userCols.length > 0 && !userCols.some((c) => c.name === 'email')) {
-  db.exec(`DROP TABLE IF EXISTS items; DROP TABLE IF EXISTS users;`);
-}
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    foto_key TEXT NOT NULL,
-    nombre TEXT NOT NULL CHECK (length(trim(nombre)) > 0),
-    descripcion TEXT,
-    precio REAL CHECK (precio IS NULL OR precio >= 0),
-    fecha_obtenido TEXT NOT NULL CHECK (fecha_obtenido GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
-    fecha_carga TEXT NOT NULL DEFAULT (datetime('now')),
-    fecha_baja TEXT CHECK (fecha_baja IS NULL OR fecha_baja GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
-    motivo_baja TEXT CHECK (motivo_baja IS NULL OR motivo_baja IN ('vendido', 'desechado', 'roto')),
-    detalles TEXT,
-    CHECK (
-      (fecha_baja IS NULL AND motivo_baja IS NULL) OR
-      (fecha_baja IS NOT NULL AND motivo_baja IS NOT NULL)
-    )
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_items_user_status ON items(user_id, fecha_baja);
-`);
-
-// Seed obligatorio: francocalegari55@gmail.com / 137546321 / role=admin
+// Cuenta admin inicial
 const ADMIN_EMAIL = 'francocalegari55@gmail.com';
-const existingAdmin = db.prepare(`SELECT id FROM users WHERE email = ?`).get(ADMIN_EMAIL);
-if (!existingAdmin) {
+if (!db.prepare(`SELECT id FROM users WHERE email = ?`).get(ADMIN_EMAIL)) {
   db.prepare(`INSERT INTO users (email, password_hash, role) VALUES (?, ?, 'admin')`).run(
     ADMIN_EMAIL,
     hashPassword('137546321')
   );
-} else {
-  db.prepare(`UPDATE users SET password_hash = ?, role = 'admin' WHERE id = ?`).run(
-    hashPassword('137546321'),
-    existingAdmin.id
-  );
 }
 
 // ---------------------------------------------------------------------------
-// 3. Cloud Storage Local (Adaptador de Bucket sobre FS)
-// ponytail: bucket local en FS; reemplazar estas 3 funciones por S3Client si se migra a nube externa
+// 2. Helpers HTTP, validación y serialización
 // ---------------------------------------------------------------------------
-const MIME_TO_EXT = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-  'image/avif': '.avif',
-  'image/heic': '.heic'
-};
-const EXT_TO_MIME = Object.fromEntries(Object.entries(MIME_TO_EXT).map(([k, v]) => [v, k]));
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
-
-const localBucket = {
-  async putObject(userId, file) {
-    if (!file || typeof file.arrayBuffer !== 'function' || file.size === 0) {
-      throw Object.assign(new Error('La foto del objeto es obligatoria.'), { status: 400 });
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      throw Object.assign(new Error('La foto supera el límite de 8 MB.'), { status: 413 });
-    }
-    const ext = MIME_TO_EXT[file.type] || '.jpg';
-    const key = `${Number(userId)}/${crypto.randomUUID()}${ext}`;
-    const fullPath = this.resolvePath(key);
-    await fsp.mkdir(path.dirname(fullPath), { recursive: true });
-    await fsp.writeFile(fullPath, Buffer.from(await file.arrayBuffer()));
-    return key;
-  },
-
-  resolvePath(key) {
-    const cleanKey = String(key).replace(/^\/+/, '');
-    const resolved = path.resolve(BUCKET_DIR, cleanKey);
-    if (!resolved.startsWith(BUCKET_DIR + path.sep)) {
-      throw Object.assign(new Error('Clave de almacenamiento inválida.'), { status: 400 });
-    }
-    return resolved;
-  },
-
-  async deleteObject(key) {
-    if (!key) return;
-    try {
-      await fsp.unlink(this.resolvePath(key));
-    } catch (err) {
-      if (err.code !== 'ENOENT') console.error('Error borrando blob:', err.message);
-    }
-  }
-};
-
-// ---------------------------------------------------------------------------
-// 4. Helpers HTTP y Autenticación
-// ---------------------------------------------------------------------------
-function formatItem(row) {
-  return row ? { ...row, foto_url: `/storage/${row.foto_key}` } : null;
-}
+const httpError = (status, message) => Object.assign(new Error(message), { status });
 
 function sendJson(res, status, data, extraHeaders = {}) {
   const body = JSON.stringify(data);
@@ -193,37 +95,127 @@ function sendJson(res, status, data, extraHeaders = {}) {
 
 async function readJson(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 1024 * 1024) throw httpError(413, 'Cuerpo de la petición demasiado grande.');
+    chunks.push(chunk);
+  }
   const raw = Buffer.concat(chunks).toString('utf8');
-  return raw ? JSON.parse(raw) : {};
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    throw httpError(400, 'JSON inválido.');
+  }
 }
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const str = (v) => String(v ?? '').trim() || null;
 
 function parseOptionalPrice(val) {
   if (val === undefined || val === null || String(val).trim() === '') return null;
   const num = Number(String(val).replace(',', '.'));
-  if (!Number.isFinite(num) || num < 0) {
-    throw Object.assign(new Error('El precio debe ser un número mayor o igual a 0.'), { status: 400 });
-  }
+  if (!Number.isFinite(num) || num < 0) throw httpError(400, 'El precio debe ser un número mayor o igual a 0.');
   return Math.round(num * 100) / 100;
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function parseCantidad(val, label = 'La cantidad') {
+  const n = Number(val ?? 1);
+  if (!Number.isInteger(n) || n < 1) throw httpError(400, `${label} debe ser un número entero mayor o igual a 1.`);
+  return n;
 }
 
+// Valida los campos editables del objeto; en edición completa con los valores actuales
+function parseItemFields(body, current = {}) {
+  const pick = (k) => (k in body ? body[k] : current[k]);
+  const nombre = str(pick('nombre'));
+  if (!nombre) throw httpError(400, 'El nombre del objeto es obligatorio.');
+  const moneda = String(pick('moneda') || 'ARS').toUpperCase();
+  if (!MONEDAS.includes(moneda)) throw httpError(400, 'La moneda debe ser ARS o USD.');
+  const fecha = str(pick('fecha_obtenido')) || todayISO();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw httpError(400, 'Fecha obtenido inválida (AAAA-MM-DD).');
+  return {
+    nombre,
+    descripcion: str(pick('descripcion')),
+    detalles: str(pick('detalles')),
+    marca: str(pick('marca')),
+    modelo: str(pick('modelo')),
+    guardado_en: str(pick('guardado_en')),
+    cantidad: parseCantidad(pick('cantidad')),
+    precio: parseOptionalPrice(pick('precio')),
+    moneda,
+    fecha_obtenido: fecha
+  };
+}
+
+const mediaUrl = (key) => (key ? `/storage/${key}` : null);
+
+function formatMedia(m) {
+  return {
+    id: m.id,
+    tipo: m.tipo,
+    estado: m.estado,
+    orden: m.orden,
+    bytes: m.bytes,
+    duracion_seg: m.duracion_seg,
+    url: mediaUrl(m.storage_key),
+    poster_url: mediaUrl(m.poster_key)
+  };
+}
+
+function getItemDetail(id) {
+  const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(id);
+  if (!item) return null;
+  item.media = db
+    .prepare(`SELECT * FROM item_media WHERE item_id = ? ORDER BY orden, id`)
+    .all(id)
+    .map(formatMedia);
+  item.contiene = db.prepare(`
+    SELECT c.id, c.nombre, c.marca, c.modelo, c.fecha_baja, r.cantidad
+    FROM item_relations r JOIN items c ON c.id = r.child_id
+    WHERE r.parent_id = ? ORDER BY c.nombre
+  `).all(id);
+  item.contenido_en = db.prepare(`
+    SELECT p.id, p.nombre, r.cantidad
+    FROM item_relations r JOIN items p ON p.id = r.parent_id
+    WHERE r.child_id = ? ORDER BY p.nombre
+  `).all(id);
+  return item;
+}
+
+// ---------------------------------------------------------------------------
+// 3. Autenticación y permisos
+// ---------------------------------------------------------------------------
 function getAuthUser(req) {
-  const cookies = parseCookies(req);
-  const payload = verifyToken(cookies.inv_session);
+  const payload = verifyToken(parseCookies(req).inv_session);
   if (!payload?.id) return null;
-  return db
-    .prepare(`SELECT id, email, role, created_at FROM users WHERE id = ?`)
-    .get(payload.id) || null;
+  return db.prepare(`SELECT id, email, role, created_at FROM users WHERE id = ?`).get(payload.id) || null;
 }
 
 function requireAuth(req) {
   const user = getAuthUser(req);
-  if (!user) throw Object.assign(new Error('No autenticado. Inicia sesión.'), { status: 401 });
+  if (!user) throw httpError(401, 'No autenticado. Inicia sesión.');
   return user;
+}
+
+function requireAdmin(req) {
+  const user = requireAuth(req);
+  if (user.role !== 'admin') throw httpError(403, 'Solo para administradores.');
+  return user;
+}
+
+function getOwnedItem(user, id) {
+  const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(Number(id));
+  if (!item) throw httpError(404, 'Objeto no encontrado.');
+  if (item.user_id !== user.id && user.role !== 'admin') throw httpError(403, 'No tienes permiso sobre este objeto.');
+  return item;
+}
+
+function getOwnedMedia(user, mediaId) {
+  const media = db.prepare(`SELECT * FROM item_media WHERE id = ?`).get(Number(mediaId));
+  if (!media) throw httpError(404, 'Archivo no encontrado.');
+  getOwnedItem(user, media.item_id);
+  return media;
 }
 
 function makeSessionCookie(user) {
@@ -231,19 +223,112 @@ function makeSessionCookie(user) {
   return `inv_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800`;
 }
 
+// Usuario cuyo inventario se consulta (admin puede ver otros)
+function targetUserId(user, requested) {
+  return user.role === 'admin' && requested ? Number(requested) : user.id;
+}
+
 // ---------------------------------------------------------------------------
-// 5. Servidor HTTP y Rutas
+// 4. Relaciones "contiene" (se llama dentro de una transacción)
+// ---------------------------------------------------------------------------
+const containsStmt = () =>
+  db.prepare(`
+    WITH RECURSIVE descendientes(id) AS (
+      SELECT child_id FROM item_relations WHERE parent_id = ?
+      UNION
+      SELECT r.child_id FROM item_relations r JOIN descendientes d ON r.parent_id = d.id
+    )
+    SELECT 1 AS hit FROM descendientes WHERE id = ? LIMIT 1
+  `);
+
+function setRelations(item, relaciones) {
+  if (!Array.isArray(relaciones)) throw httpError(400, 'relaciones debe ser una lista.');
+  const unique = new Map();
+  for (const rel of relaciones) {
+    const childId = Number(rel?.child_id);
+    if (!Number.isInteger(childId)) throw httpError(400, 'Objeto relacionado inválido.');
+    unique.set(childId, parseCantidad(rel.cantidad, 'La cantidad del objeto contenido'));
+  }
+
+  db.prepare(`DELETE FROM item_relations WHERE parent_id = ?`).run(item.id);
+  const isDescendant = containsStmt();
+  const insert = db.prepare(`INSERT INTO item_relations (parent_id, child_id, cantidad) VALUES (?, ?, ?)`);
+
+  for (const [childId, cantidad] of unique) {
+    if (childId === item.id) throw httpError(400, 'Un objeto no puede contenerse a sí mismo.');
+    const child = db.prepare(`SELECT id, nombre, user_id FROM items WHERE id = ?`).get(childId);
+    if (!child || child.user_id !== item.user_id) {
+      throw httpError(400, 'Los objetos relacionados deben existir en el inventario del mismo usuario.');
+    }
+    if (isDescendant.get(childId, item.id)) {
+      throw httpError(400, `"${child.nombre}" ya contiene a este objeto (se formaría un ciclo).`);
+    }
+    insert.run(item.id, childId, cantidad);
+  }
+}
+
+async function deleteMediaFiles(mediaRows) {
+  const ids = mediaRows.map((m) => m.id);
+  const originals = ids.length
+    ? db.prepare(`SELECT input_key FROM media_jobs WHERE media_id IN (${ids.map(() => '?').join(',')})`).all(...ids)
+    : [];
+  return () =>
+    bucket.remove(
+      ...mediaRows.flatMap((m) => [m.storage_key, m.poster_key]),
+      ...originals.map((o) => o.input_key)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 5. Servir archivos del bucket con sesión y soporte de Range (necesario para video en iOS)
+// ---------------------------------------------------------------------------
+async function serveStorage(req, res, key) {
+  const user = requireAuth(req);
+  const owner = key.split('/')[0];
+  if (owner !== String(user.id) && user.role !== 'admin') throw httpError(403, 'Sin acceso a este archivo.');
+
+  const filePath = bucket.resolve(key);
+  const stat = await fsp.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) throw httpError(404, 'Archivo no encontrado.');
+
+  const headers = {
+    'Content-Type': MIME_BY_EXT[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+    'Cache-Control': 'private, max-age=31536000, immutable',
+    'Accept-Ranges': 'bytes'
+  };
+
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (range && (range[1] || range[2])) {
+    let start = range[1] ? Number(range[1]) : stat.size - Number(range[2]);
+    let end = range[1] && range[2] ? Number(range[2]) : stat.size - 1;
+    start = Math.max(0, start);
+    end = Math.min(end, stat.size - 1);
+    if (start > end) {
+      res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
+      return res.end();
+    }
+    res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${stat.size}`, 'Content-Length': end - start + 1 });
+    return fs.createReadStream(filePath, { start, end }).pipe(res);
+  }
+
+  res.writeHead(200, { ...headers, 'Content-Length': stat.size });
+  fs.createReadStream(filePath).pipe(res);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Rutas
 // ---------------------------------------------------------------------------
 export const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const { pathname, searchParams } = url;
+    const m = (re) => pathname.match(re);
+    let match;
 
-    // --- AUTH: Login ---
+    // --- Auth ---
     if (pathname === '/api/auth/login' && req.method === 'POST') {
       const { email, password } = await readJson(req);
-      const cleanEmail = String(email || '').trim();
-      const user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(cleanEmail);
+      const user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(String(email || '').trim());
       if (!user || !verifyPassword(password, user.password_hash)) {
         return sendJson(res, 401, { error: 'Correo o contraseña incorrectos.' });
       }
@@ -251,18 +336,14 @@ export const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, publicUser, { 'Set-Cookie': makeSessionCookie(publicUser) });
     }
 
-    // --- AUTH: Registro de Cuenta ---
     if (pathname === '/api/auth/register' && req.method === 'POST') {
       const { email, password } = await readJson(req);
       const cleanEmail = String(email || '').trim().toLowerCase();
-      if (!cleanEmail.includes('@')) {
-        return sendJson(res, 400, { error: 'Ingresa un correo electrónico válido.' });
-      }
+      if (!cleanEmail.includes('@')) return sendJson(res, 400, { error: 'Ingresa un correo electrónico válido.' });
       if (!password || String(password).length < 6) {
         return sendJson(res, 400, { error: 'La contraseña debe tener al menos 6 caracteres.' });
       }
-      const exists = db.prepare(`SELECT id FROM users WHERE email = ?`).get(cleanEmail);
-      if (exists) {
+      if (db.prepare(`SELECT id FROM users WHERE email = ?`).get(cleanEmail)) {
         return sendJson(res, 409, { error: 'Ya existe una cuenta con ese correo.' });
       }
       const result = db
@@ -272,294 +353,305 @@ export const server = http.createServer(async (req, res) => {
       return sendJson(res, 201, publicUser, { 'Set-Cookie': makeSessionCookie(publicUser) });
     }
 
-    // --- AUTH: Logout ---
     if (pathname === '/api/auth/logout' && req.method === 'POST') {
-      return sendJson(
-        res,
-        200,
-        { ok: true },
-        { 'Set-Cookie': 'inv_session=; HttpOnly; Path=/; Max-Age=0' }
-      );
+      return sendJson(res, 200, { ok: true }, { 'Set-Cookie': 'inv_session=; HttpOnly; Path=/; Max-Age=0' });
     }
 
-    // --- AUTH: Sesión Actual ---
     if (pathname === '/api/auth/me' && req.method === 'GET') {
       const user = getAuthUser(req);
       if (!user) return sendJson(res, 401, { error: 'No autenticado.' });
       return sendJson(res, 200, user);
     }
 
-    // --- API: Gestión de Usuarios (Admin ve todos; usuario normal ve su propio perfil) ---
+    // --- Usuarios ---
     if (pathname === '/api/users' && req.method === 'GET') {
-      const currentUser = requireAuth(req);
-      if (currentUser.role === 'admin') {
-        const users = db.prepare(`
-          SELECT u.id, u.email, u.role, u.created_at,
-            (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.fecha_baja IS NULL) AS active_count,
-            (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.fecha_baja IS NOT NULL) AS retired_count
-          FROM users u
-          ORDER BY u.id ASC
-        `).all();
-        return sendJson(res, 200, users);
-      }
-      const selfStats = db.prepare(`
+      const user = requireAuth(req);
+      const sql = `
         SELECT u.id, u.email, u.role, u.created_at,
           (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.fecha_baja IS NULL) AS active_count,
           (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.fecha_baja IS NOT NULL) AS retired_count
-        FROM users u WHERE u.id = ?
-      `).get(currentUser.id);
-      return sendJson(res, 200, [selfStats]);
-    }
-
-    if (pathname === '/api/users' && req.method === 'POST') {
-      const currentUser = requireAuth(req);
-      if (currentUser.role !== 'admin') {
-        return sendJson(res, 403, { error: 'Solo los administradores pueden crear usuarios desde el panel.' });
-      }
-      const { email, password, role } = await readJson(req);
-      const cleanEmail = String(email || '').trim().toLowerCase();
-      const userRole = role === 'admin' ? 'admin' : 'user';
-      if (!cleanEmail.includes('@') || !password) {
-        return sendJson(res, 400, { error: 'Correo y contraseña requeridos.' });
-      }
-      const exists = db.prepare(`SELECT id FROM users WHERE email = ?`).get(cleanEmail);
-      if (exists) return sendJson(res, 409, { error: 'El usuario ya existe.' });
-
-      const result = db
-        .prepare(`INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)`)
-        .run(cleanEmail, hashPassword(password), userRole);
-      const created = db
-        .prepare(`SELECT id, email, role, created_at FROM users WHERE id = ?`)
-        .get(result.lastInsertRowid);
-      return sendJson(res, 201, created);
-    }
-
-    // --- API: Listar Objetos ---
-    if (pathname === '/api/items' && req.method === 'GET') {
-      const currentUser = requireAuth(req);
-      const targetUserId =
-        currentUser.role === 'admin' && searchParams.get('userId')
-          ? Number(searchParams.get('userId'))
-          : currentUser.id;
-      const estado = searchParams.get('estado') || 'activos';
-      const q = (searchParams.get('q') || '').trim();
-
-      let sql = `SELECT * FROM items WHERE user_id = ?`;
-      const params = [targetUserId];
-
-      if (estado === 'activos') sql += ` AND fecha_baja IS NULL`;
-      else if (estado === 'bajas') sql += ` AND fecha_baja IS NOT NULL`;
-
-      if (q) {
-        sql += ` AND (nombre LIKE ? OR descripcion LIKE ? OR detalles LIKE ?)`;
-        const pattern = `%${q}%`;
-        params.push(pattern, pattern, pattern);
-      }
-
-      sql += ` ORDER BY id DESC`;
-      const rows = db.prepare(sql).all(...params).map(formatItem);
+        FROM users u`;
+      const rows =
+        user.role === 'admin'
+          ? db.prepare(`${sql} ORDER BY u.id`).all()
+          : db.prepare(`${sql} WHERE u.id = ?`).all(user.id);
       return sendJson(res, 200, rows);
     }
 
-    // --- API: Añadir Objeto (Multipart FormData) ---
+    if (pathname === '/api/users' && req.method === 'POST') {
+      requireAdmin(req);
+      const { email, password, role } = await readJson(req);
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      if (!cleanEmail.includes('@') || !password) return sendJson(res, 400, { error: 'Correo y contraseña requeridos.' });
+      if (db.prepare(`SELECT id FROM users WHERE email = ?`).get(cleanEmail)) {
+        return sendJson(res, 409, { error: 'El usuario ya existe.' });
+      }
+      const result = db
+        .prepare(`INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)`)
+        .run(cleanEmail, hashPassword(password), role === 'admin' ? 'admin' : 'user');
+      return sendJson(
+        res,
+        201,
+        db.prepare(`SELECT id, email, role, created_at FROM users WHERE id = ?`).get(result.lastInsertRowid)
+      );
+    }
+
+    // --- Sugerencias de "Guardado en" ---
+    if (pathname === '/api/guardado-en' && req.method === 'GET') {
+      const user = requireAuth(req);
+      const rows = db
+        .prepare(`SELECT DISTINCT guardado_en FROM items WHERE user_id = ? AND guardado_en IS NOT NULL ORDER BY 1`)
+        .all(targetUserId(user, searchParams.get('userId')));
+      return sendJson(res, 200, rows.map((r) => r.guardado_en));
+    }
+
+    // --- Listado de objetos ---
+    if (pathname === '/api/items' && req.method === 'GET') {
+      const user = requireAuth(req);
+      const estado = searchParams.get('estado') || 'activos';
+      const q = (searchParams.get('q') || '').trim();
+
+      let sql = `
+        SELECT i.*,
+          (SELECT COALESCE(md.poster_key, md.storage_key) FROM item_media md
+            WHERE md.item_id = i.id AND COALESCE(md.poster_key, md.storage_key) IS NOT NULL
+            ORDER BY md.orden, md.id LIMIT 1) AS portada_key,
+          (SELECT COUNT(*) FROM item_media md WHERE md.item_id = i.id) AS media_count,
+          (SELECT COUNT(*) FROM item_media md WHERE md.item_id = i.id AND md.estado IN ('pendiente','procesando')) AS media_pendientes,
+          (SELECT json_group_array(json_object('id', c.id, 'nombre', c.nombre, 'cantidad', r.cantidad))
+            FROM item_relations r JOIN items c ON c.id = r.child_id WHERE r.parent_id = i.id) AS contiene_json
+        FROM items i WHERE i.user_id = ?`;
+      const params = [targetUserId(user, searchParams.get('userId'))];
+
+      if (estado === 'activos') sql += ` AND i.fecha_baja IS NULL`;
+      else if (estado === 'bajas') sql += ` AND i.fecha_baja IS NOT NULL`;
+
+      if (q) {
+        sql += ` AND (i.nombre LIKE ? OR i.descripcion LIKE ? OR i.detalles LIKE ? OR i.marca LIKE ? OR i.modelo LIKE ? OR i.guardado_en LIKE ?)`;
+        params.push(...Array(6).fill(`%${q}%`));
+      }
+      sql += ` ORDER BY i.id DESC`;
+
+      const rows = db.prepare(sql).all(...params).map(({ portada_key, contiene_json, ...row }) => ({
+        ...row,
+        portada_url: mediaUrl(portada_key),
+        contiene: JSON.parse(contiene_json || '[]')
+      }));
+      return sendJson(res, 200, rows);
+    }
+
+    // --- Crear objeto (JSON; la multimedia se sube después a /api/items/:id/media) ---
     if (pathname === '/api/items' && req.method === 'POST') {
-      const currentUser = requireAuth(req);
-      const webReq = new Request(url.toString(), {
-        method: req.method,
-        headers: req.headers,
-        body: Readable.toWeb(req),
-        duplex: 'half'
-      });
-      const form = await webReq.formData();
+      const user = requireAuth(req);
+      const body = await readJson(req);
+      const ownerId = targetUserId(user, body.user_id);
+      if (!db.prepare(`SELECT id FROM users WHERE id = ?`).get(ownerId)) throw httpError(404, 'Usuario no encontrado.');
+      const f = parseItemFields(body);
 
-      const targetUserId =
-        currentUser.role === 'admin' && form.get('user_id')
-          ? Number(form.get('user_id'))
-          : currentUser.id;
-
-      const nombre = String(form.get('nombre') || '').trim();
-      if (!nombre) return sendJson(res, 400, { error: 'El nombre del objeto es obligatorio.' });
-
-      const descripcion = String(form.get('descripcion') || '').trim() || null;
-      const detalles = String(form.get('detalles') || '').trim() || null;
-      const precio = parseOptionalPrice(form.get('precio'));
-      const fechaObtenido = String(form.get('fecha_obtenido') || '').trim() || todayISO();
-      const foto = form.get('foto');
-
-      const fotoKey = await localBucket.putObject(targetUserId, foto);
-
-      try {
+      const id = tx(db, () => {
         const result = db.prepare(`
-          INSERT INTO items (user_id, foto_key, nombre, descripcion, precio, fecha_obtenido, detalles)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(targetUserId, fotoKey, nombre, descripcion, precio, fechaObtenido, detalles);
+          INSERT INTO items (user_id, nombre, descripcion, detalles, marca, modelo, guardado_en, cantidad, precio, moneda, fecha_obtenido)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(ownerId, f.nombre, f.descripcion, f.detalles, f.marca, f.modelo, f.guardado_en, f.cantidad, f.precio, f.moneda, f.fecha_obtenido);
+        const newId = Number(result.lastInsertRowid);
+        if (body.relaciones) setRelations({ id: newId, user_id: ownerId }, body.relaciones);
+        return newId;
+      });
+      return sendJson(res, 201, getItemDetail(id));
+    }
 
-        const created = db.prepare(`SELECT * FROM items WHERE id = ?`).get(result.lastInsertRowid);
-        return sendJson(res, 201, formatItem(created));
-      } catch (dbErr) {
-        await localBucket.deleteObject(fotoKey);
-        throw Object.assign(new Error(`Datos inválidos: ${dbErr.message}`), { status: 400 });
+    // --- Detalle / edición / borrado de un objeto ---
+    if ((match = m(/^\/api\/items\/(\d+)$/))) {
+      const user = requireAuth(req);
+      const item = getOwnedItem(user, match[1]);
+
+      if (req.method === 'GET') return sendJson(res, 200, getItemDetail(item.id));
+
+      if (req.method === 'PATCH') {
+        const body = await readJson(req);
+        const f = parseItemFields(body, item);
+        tx(db, () => {
+          db.prepare(`
+            UPDATE items SET nombre = ?, descripcion = ?, detalles = ?, marca = ?, modelo = ?, guardado_en = ?,
+              cantidad = ?, precio = ?, moneda = ?, fecha_obtenido = ?
+            WHERE id = ?
+          `).run(f.nombre, f.descripcion, f.detalles, f.marca, f.modelo, f.guardado_en, f.cantidad, f.precio, f.moneda, f.fecha_obtenido, item.id);
+          if ('relaciones' in body) setRelations(item, body.relaciones);
+        });
+        return sendJson(res, 200, getItemDetail(item.id));
+      }
+
+      if (req.method === 'DELETE') {
+        const media = db.prepare(`SELECT * FROM item_media WHERE item_id = ?`).all(item.id);
+        const removeFiles = await deleteMediaFiles(media);
+        db.prepare(`DELETE FROM items WHERE id = ?`).run(item.id);
+        await removeFiles();
+        return sendJson(res, 200, { deleted: true, id: item.id });
       }
     }
 
-    // --- API: Dar de Baja o Reactivar Objeto ---
-    const bajaMatch = pathname.match(/^\/api\/items\/(\d+)\/baja$/);
-    if (bajaMatch && req.method === 'PATCH') {
-      const currentUser = requireAuth(req);
-      const itemId = Number(bajaMatch[1]);
-      const existing = db.prepare(`SELECT * FROM items WHERE id = ?`).get(itemId);
-      if (!existing) return sendJson(res, 404, { error: 'Objeto no encontrado.' });
-      if (existing.user_id !== currentUser.id && currentUser.role !== 'admin') {
-        return sendJson(res, 403, { error: 'No tienes permiso sobre este objeto.' });
-      }
-
+    // --- Dar de baja (opcionalmente con su contenido) o reactivar ---
+    if ((match = m(/^\/api\/items\/(\d+)\/baja$/)) && req.method === 'PATCH') {
+      const user = requireAuth(req);
+      const item = getOwnedItem(user, match[1]);
       const body = await readJson(req);
+
       if (body.reactivar) {
-        db.prepare(`UPDATE items SET fecha_baja = NULL, motivo_baja = NULL WHERE id = ?`).run(itemId);
+        db.prepare(`UPDATE items SET fecha_baja = NULL, motivo_baja = NULL WHERE id = ?`).run(item.id);
       } else {
         const motivo = String(body.motivo_baja || '').trim();
-        const fechaBaja = String(body.fecha_baja || '').trim() || todayISO();
-        if (!['vendido', 'desechado', 'roto'].includes(motivo)) {
-          return sendJson(res, 400, {
-            error: 'El motivo de baja debe ser: vendido, desechado o roto.'
+        const fechaBaja = str(body.fecha_baja) || todayISO();
+        if (!MOTIVOS.includes(motivo)) {
+          return sendJson(res, 400, { error: 'El motivo de baja debe ser: vendido, desechado o roto.' });
+        }
+        if (body.incluir_contenido) {
+          db.prepare(`
+            WITH RECURSIVE d(id) AS (
+              SELECT child_id FROM item_relations WHERE parent_id = ?
+              UNION
+              SELECT r.child_id FROM item_relations r JOIN d ON r.parent_id = d.id
+            )
+            UPDATE items SET fecha_baja = ?, motivo_baja = ?
+            WHERE (id = ? OR id IN (SELECT id FROM d)) AND fecha_baja IS NULL
+          `).run(item.id, fechaBaja, motivo, item.id);
+        } else {
+          db.prepare(`UPDATE items SET fecha_baja = ?, motivo_baja = ? WHERE id = ?`).run(fechaBaja, motivo, item.id);
+        }
+      }
+      return sendJson(res, 200, getItemDetail(item.id));
+    }
+
+    // --- Subir multimedia: un archivo por petición, cuerpo crudo por streaming ---
+    if ((match = m(/^\/api\/items\/(\d+)\/media$/)) && req.method === 'POST') {
+      const user = requireAuth(req);
+      const item = getOwnedItem(user, match[1]);
+      const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const declared = Number(req.headers['content-length'] || 0);
+      const nextOrden = db
+        .prepare(`SELECT COALESCE(MAX(orden) + 1, 0) AS n FROM item_media WHERE item_id = ?`)
+        .get(item.id).n;
+
+      if (IMAGE_TYPES[type]) {
+        if (declared > MAX_IMAGE_BYTES) throw httpError(413, 'La imagen supera 3 MB (debe comprimirse antes de subir).');
+        const rawKey = `${item.user_id}/${crypto.randomUUID()}${IMAGE_TYPES[type]}`;
+        await bucket.writeStream(rawKey, req, MAX_IMAGE_BYTES);
+        const { key, bytes } = await compressImageInBucket(bucket, item.user_id, rawKey);
+        const result = db.prepare(`
+          INSERT INTO item_media (item_id, tipo, storage_key, estado, orden, bytes) VALUES (?, 'imagen', ?, 'listo', ?, ?)
+        `).run(item.id, key, nextOrden, bytes);
+        const row = db.prepare(`SELECT * FROM item_media WHERE id = ?`).get(result.lastInsertRowid);
+        return sendJson(res, 201, formatMedia(row));
+      }
+
+      if (type.startsWith('video/')) {
+        if (declared > MAX_VIDEO_BYTES) throw httpError(413, 'El video supera el máximo de 500 MB.');
+        const inputKey = `_originales/${crypto.randomUUID()}${VIDEO_TYPES[type] || '.bin'}`;
+        const bytes = await bucket.writeStream(inputKey, req, MAX_VIDEO_BYTES);
+        const mediaId = tx(db, () => {
+          const result = db.prepare(`
+            INSERT INTO item_media (item_id, tipo, estado, orden, bytes) VALUES (?, 'video', 'pendiente', ?, ?)
+          `).run(item.id, nextOrden, bytes);
+          db.prepare(`INSERT INTO media_jobs (media_id, input_key) VALUES (?, ?)`).run(result.lastInsertRowid, inputKey);
+          return result.lastInsertRowid;
+        });
+        const row = db.prepare(`SELECT * FROM item_media WHERE id = ?`).get(mediaId);
+        return sendJson(res, 202, formatMedia(row));
+      }
+
+      throw httpError(415, 'Formato no soportado: sube una imagen o un video.');
+    }
+
+    // --- Gestionar un archivo multimedia (portada / borrar) ---
+    if ((match = m(/^\/api\/media\/(\d+)$/))) {
+      const user = requireAuth(req);
+      const media = getOwnedMedia(user, match[1]);
+
+      if (req.method === 'PATCH') {
+        const body = await readJson(req);
+        if (body.portada) {
+          tx(db, () => {
+            db.prepare(`UPDATE item_media SET orden = orden + 1 WHERE item_id = ?`).run(media.item_id);
+            db.prepare(`UPDATE item_media SET orden = 0 WHERE id = ?`).run(media.id);
           });
         }
-        db.prepare(`UPDATE items SET fecha_baja = ?, motivo_baja = ? WHERE id = ?`).run(
-          fechaBaja,
-          motivo,
-          itemId
-        );
+        return sendJson(res, 200, formatMedia(db.prepare(`SELECT * FROM item_media WHERE id = ?`).get(media.id)));
       }
 
-      const updated = db.prepare(`SELECT * FROM items WHERE id = ?`).get(itemId);
-      return sendJson(res, 200, formatItem(updated));
-    }
-
-    // --- API: Eliminar Objeto ---
-    const itemMatch = pathname.match(/^\/api\/items\/(\d+)$/);
-    if (itemMatch && req.method === 'DELETE') {
-      const currentUser = requireAuth(req);
-      const itemId = Number(itemMatch[1]);
-      const existing = db.prepare(`SELECT * FROM items WHERE id = ?`).get(itemId);
-      if (!existing) return sendJson(res, 404, { error: 'Objeto no encontrado.' });
-      if (existing.user_id !== currentUser.id && currentUser.role !== 'admin') {
-        return sendJson(res, 403, { error: 'No tienes permiso sobre este objeto.' });
+      if (req.method === 'DELETE') {
+        const removeFiles = await deleteMediaFiles([media]);
+        db.prepare(`DELETE FROM item_media WHERE id = ?`).run(media.id);
+        await removeFiles();
+        return sendJson(res, 200, { deleted: true, id: media.id });
       }
-
-      db.prepare(`DELETE FROM items WHERE id = ?`).run(itemId);
-      await localBucket.deleteObject(existing.foto_key);
-      return sendJson(res, 200, { deleted: true, id: itemId });
     }
 
-    // --- Cloud Storage Local: Servir Imágenes del Bucket ---
-    if (pathname.startsWith('/storage/') && req.method === 'GET') {
-      const key = pathname.slice('/storage/'.length);
-      const filePath = localBucket.resolvePath(key);
-      if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: 'Imagen no encontrada.' });
+    // --- Cola de compresión (admin) ---
+    if (pathname === '/api/jobs' && req.method === 'GET') {
+      requireAdmin(req);
+      const jobs = db.prepare(`
+        SELECT j.id, j.estado, j.intentos, j.error, j.created_at, j.locked_at, j.finished_at,
+               md.item_id, md.bytes, i.nombre AS item_nombre, u.email AS usuario
+        FROM media_jobs j
+        JOIN item_media md ON md.id = j.media_id
+        JOIN items i ON i.id = md.item_id
+        JOIN users u ON u.id = i.user_id
+        ORDER BY j.id DESC LIMIT 100
+      `).all();
+      const resumen = Object.fromEntries(
+        db.prepare(`SELECT estado, COUNT(*) AS n FROM media_jobs GROUP BY estado`).all().map((r) => [r.estado, r.n])
+      );
+      return sendJson(res, 200, { resumen, jobs });
+    }
 
-      const ext = path.extname(filePath).toLowerCase();
-      res.writeHead(200, {
-        'Content-Type': EXT_TO_MIME[ext] || 'application/octet-stream',
-        'Cache-Control': 'public, max-age=31536000, immutable'
+    if ((match = m(/^\/api\/jobs\/(\d+)\/reintentar$/)) && req.method === 'POST') {
+      requireAdmin(req);
+      const job = db.prepare(`SELECT * FROM media_jobs WHERE id = ?`).get(Number(match[1]));
+      if (!job) throw httpError(404, 'Tarea no encontrada.');
+      if (job.estado !== 'error') throw httpError(409, 'Solo se pueden reintentar tareas con error.');
+      tx(db, () => {
+        db.prepare(`UPDATE media_jobs SET estado = 'pendiente', intentos = 0, error = NULL WHERE id = ?`).run(job.id);
+        db.prepare(`UPDATE item_media SET estado = 'pendiente' WHERE id = ?`).run(job.media_id);
       });
-      return fs.createReadStream(filePath).pipe(res);
+      return sendJson(res, 200, { ok: true });
     }
 
-    // --- Archivos Estáticos Frontend ---
-    if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html' || pathname === '/app.js')) {
+    // --- Archivos del bucket ---
+    if (pathname.startsWith('/storage/') && req.method === 'GET') {
+      return await serveStorage(req, res, decodeURIComponent(pathname.slice('/storage/'.length)));
+    }
+
+    // --- Frontend ---
+    if (req.method === 'GET' && ['/', '/index.html', '/app.js'].includes(pathname)) {
       const file = pathname === '/app.js' ? 'app.js' : 'index.html';
-      const contentType =
-        file === 'app.js' ? 'application/javascript; charset=utf-8' : 'text/html; charset=utf-8';
-      const content = await fsp.readFile(path.join(PUBLIC_DIR, file));
-      res.writeHead(200, { 'Content-Type': contentType });
-      return res.end(content);
+      const contentType = file === 'app.js' ? 'application/javascript; charset=utf-8' : 'text/html; charset=utf-8';
+      res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
+      return res.end(await fsp.readFile(path.join(PUBLIC_DIR, file)));
     }
 
     sendJson(res, 404, { error: 'Ruta no encontrada.' });
   } catch (err) {
-    const status = err.status || 500;
-    sendJson(res, status, { error: err.message || 'Error interno del servidor.' });
+    if (!err.status) console.error(err);
+    if (res.headersSent) return res.destroy();
+    // Si se rechaza una subida sin leer el cuerpo, se cierra la conexión para no recibir el resto
+    sendJson(res, err.status || 500, { error: err.status ? err.message : 'Error interno del servidor.' }, req.complete ? {} : { Connection: 'close' });
   }
 });
 
 // ---------------------------------------------------------------------------
-// 6. Arranque o Self-Check (--test)
+// 7. Arranque (solo si se ejecuta directamente: node server.js)
 // ---------------------------------------------------------------------------
-if (IS_TEST) {
-  server.listen(0, '127.0.0.1', async () => {
-    const { port } = server.address();
-    const base = `http://127.0.0.1:${port}`;
-    try {
-      // 1. Verificar cuenta admin pre-creada (francocalegari55@gmail.com / 137546321 / admin)
-      const loginRes = await fetch(`${base}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'francocalegari55@gmail.com',
-          password: '137546321'
-        })
-      });
-      assert.equal(loginRes.status, 200);
-      const adminUser = await loginRes.json();
-      assert.equal(adminUser.email, 'francocalegari55@gmail.com');
-      assert.equal(adminUser.role, 'admin');
-      const cookie = loginRes.headers.get('set-cookie').split(';')[0];
-
-      // 2. Verificar sesión /api/auth/me
-      const meRes = await fetch(`${base}/api/auth/me`, { headers: { Cookie: cookie } });
-      assert.equal(meRes.status, 200);
-      const me = await meRes.json();
-      assert.equal(me.role, 'admin');
-
-      // 3. Subir objeto autenticado
-      const form = new FormData();
-      form.set('nombre', 'Cámara Analógica Olympus');
-      form.set('descripcion', 'Lente 35mm f/2.8');
-      form.set('precio', '125.50');
-      form.set('fecha_obtenido', '2025-06-15');
-      form.set('detalles', 'Serie #99412');
-      const fakeJpeg = new Blob([Uint8Array.from([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
-      form.set('foto', fakeJpeg, 'olympus.jpg');
-
-      const iRes = await fetch(`${base}/api/items`, {
-        method: 'POST',
-        headers: { Cookie: cookie },
-        body: form
-      });
-      assert.equal(iRes.status, 201);
-      const item = await iRes.json();
-      assert.equal(item.user_id, adminUser.id);
-
-      // 4. Dar de baja el objeto
-      const bajaRes = await fetch(`${base}/api/items/${item.id}/baja`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Cookie: cookie },
-        body: JSON.stringify({ motivo_baja: 'vendido', fecha_baja: '2026-11-08' })
-      });
-      assert.equal(bajaRes.status, 200);
-
-      // 5. Registrar nuevo usuario estándar y verificar aislamiento de inventario
-      const regRes = await fetch(`${base}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'usuario@test.com', password: 'password123' })
-      });
-      assert.equal(regRes.status, 201);
-      const stdUser = await regRes.json();
-      assert.equal(stdUser.role, 'user');
-
-      console.log('✅ Self-check completado: Admin (francocalegari55@gmail.com), Auth, SQLite y Bucket verificados.');
-    } finally {
-      server.close();
-      db.close();
-      await fsp.rm(DATA_DIR, { recursive: true, force: true });
-      await fsp.rm(BUCKET_DIR, { recursive: true, force: true });
-    }
-  });
-} else {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const PORT = Number(process.env.PORT) || 3000;
+  server.requestTimeout = 0; // subidas de video largas en redes móviles
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`📦 Organizador de Inventario corriendo en http://localhost:${PORT}`);
+    optimizeExistingImages(db, bucket)
+      .then(({ optimized, savedBytes }) => {
+        if (optimized > 0) {
+          console.log(`🖼️  ${optimized} imágenes existentes comprimidas a WebP (ahorro: ${(savedBytes / 1024).toFixed(1)} KB)`);
+        }
+      })
+      .catch((err) => console.error('Error optimizando imágenes existentes:', err.message));
   });
 
   const shutdown = () => {
@@ -567,6 +659,7 @@ if (IS_TEST) {
       db.close();
       process.exit(0);
     });
+    setTimeout(() => process.exit(0), 10_000).unref();
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);

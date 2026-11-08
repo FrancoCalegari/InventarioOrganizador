@@ -1,0 +1,20 @@
+services:
+  inventario:
+    build: .
+    container_name: inventario-organizador
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - SESSION_SECRET=${SESSION_SECRET:-inv-local-secret-key-2026}
+      - DATA_DIR=/app/data
+      - BUCKET_DIR=/app/storage/buckets/items
+    volumes:
+      - inventario_sql:/app/data
+      - inventario_storage:/app/storage
+    restart: unless-stopped
+
+volumes:
+  inventario_sql:
+  inventario_storage:
+

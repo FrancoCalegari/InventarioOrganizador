@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Inventario Organizador</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-muted: #f1f5f9;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --border: #cbd5e1;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --danger: #dc2626;
+      --amber: #d97706;
+      --emerald: #059669;
+      --radius: 14px;
+      --shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    [hidden] { display: none !important; }
+
+    .visually-hidden {
+      position: absolute;
+      clip-path: inset(50%);
+      overflow: hidden;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      white-space: nowrap;
+    }
+
+    /* Vista de Autenticación (Mobile-First, parte superior para evitar bloqueo de teclado) */
+    .auth-shell {
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 2rem;
+    }
+
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+
+    .auth-brand {
+      margin: 0 0 0.85rem;
+      font-size: clamp(1.25rem, 1rem + 1.5vw, 1.55rem);
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .password-row {
+      display: flex;
+      gap: 0.45rem;
+      align-items: stretch;
+    }
+
+    .password-row input {
+      flex: 1;
+    }
+
+    .toggle-pwd-btn {
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 0 0.8rem;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--surface-muted);
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* Vista Principal de Inventario */
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      padding-block-end: calc(88px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(10px);
+      border-block-end: 1px solid var(--border);
+      padding: 0.75rem 1rem;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      max-width: 960px;
+      margin-inline: auto;
+      flex-wrap: wrap;
+    }
+
+    .app-title {
+      margin: 0;
+      font-size: clamp(1.1rem, 0.95rem + 1.2vw, 1.4rem);
+      font-weight: 800;
+    }
+
+    .user-session-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+    }
+
+    .role-badge {
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: var(--primary);
+    }
+
+    .role-badge[data-role="admin"] {
+      background: #fef3c7;
+      color: #b45309;
+    }
+
+    .user-email-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      max-width: 170px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-select {
+      font-size: 0.92rem;
+      padding: 0.35rem 0.65rem;
+      min-height: 40px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-muted);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .icon-btn {
+      min-width: 40px;
+      min-height: 40px;
+      padding: 0 0.65rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .toolbar {
+      max-width: 960px;
+      margin: 0.65rem auto 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .tabs-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--surface-muted);
+      padding: 0.25rem;
+      border-radius: 12px;
+      gap: 0.25rem;
+    }
+
+    .tab-btn {
+      border: 0;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 600;
+      min-height: 44px;
+      border-radius: 9px;
+      cursor: pointer;
+    }
+
+    .tab-btn[aria-selected="true"] {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .search-summary-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 160px;
+      font-size: 1rem;
+      padding: 0.55rem 0.85rem;
+      min-height: 44px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .summary-pill {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: #eff6ff;
+      padding: 0.45rem 0.75rem;
+      border-radius: 10px;
+      white-space: nowrap;
+    }
+
+    .select-mode-btn {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 0.45rem 0.75rem;
+      min-height: 44px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .select-mode-btn[aria-pressed="true"] {
+      background: #eff6ff;
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .item-card[data-selected="true"] {
+      border: 2.5px solid var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    }
+
+    .card-check-label {
+      position: absolute;
+      top: 0.45rem;
+      inset-inline-end: 0.45rem;
+      z-index: 3;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .card-check-label input[type="checkbox"] {
+      width: 1.2rem;
+      height: 1.2rem;
+      accent-color: var(--primary);
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .selection-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      width: 100%;
+      max-width: 520px;
+      background: #0f172a;
+      color: #fff;
+      padding: 0.5rem 0.75rem;
+      border-radius: 14px;
+    }
+
+    .selection-bar-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .check-options-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-block-end: 0.9rem;
+    }
+
+    .check-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 0.4rem 0.7rem;
+      border-radius: 999px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .check-pill input[type="checkbox"] {
+      accent-color: var(--primary);
+      width: 1.05rem;
+      height: 1.05rem;
+      margin: 0;
+    }
+
+    /* Galería Mobile-First */
+    .main-container {
+      width: 100%;
+      max-width: 960px;
+      margin-inline: auto;
+      padding: 1rem;
+      flex: 1;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 0.85rem;
+    }
+
+    .item-card-wrapper {
+      container-type: inline-size;
+    }
+
+    .item-card {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      padding: 0;
+      text-align: start;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      background: var(--surface-muted);
+      overflow: hidden;
+    }
+
+    .thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+    }
+
+    .badge-price {
+      position: absolute;
+      bottom: 0.5rem;
+      inset-inline-end: 0.5rem;
+      background: rgba(15, 23, 42, 0.82);
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+    }
+
+    .badge-status {
+      position: absolute;
+      top: 0.5rem;
+      inset-inline-start: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      color: #fff;
+    }
+
+    .badge-status[data-motivo="vendido"] { background: var(--emerald); }
+    .badge-status[data-motivo="desechado"] { background: var(--amber); }
+    .badge-status[data-motivo="roto"] { background: var(--danger); }
+
+    .card-body {
+      padding: 0.65rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta {
+      margin: 0;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    @container (min-width: 220px) {
+      .card-title { font-size: 1.05rem; }
+      .card-body { padding: 0.8rem 0.9rem; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1.25rem;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+    }
+
+    .bottom-dock {
+      position: fixed;
+      bottom: 0;
+      inset-inline: 0;
+      z-index: 20;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(10px);
+      border-block-start: 1px solid var(--border);
+      padding: 0.65rem 1rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+      display: flex;
+      justify-content: center;
+    }
+
+    .fab-add {
+      width: 100%;
+      max-width: 420px;
+      min-height: 52px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--primary);
+      color: #ffffff;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.45);
+    }
+
+    /* Dialogs y Formularios */
+    dialog {
+      width: min(94vw, 500px);
+      max-height: 90dvh;
+      border: 0;
+      border-radius: 18px;
+      padding: 0;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+    }
+
+    dialog:modal {
+      overscroll-behavior: contain;
+    }
+
+    dialog::backdrop {
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(3px);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.9rem 1.15rem;
+      border-block-end: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      z-index: 2;
+    }
+
+    .dialog-header h2 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+
+    .dialog-body {
+      padding: 1.15rem;
+    }
+
+    .form-group {
+      margin-block-end: 1.1rem;
+    }
+
+    .form-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    label, legend {
+      display: block;
+      font-weight: 600;
+      font-size: 0.92rem;
+      margin-block-end: 0.35rem;
+      color: var(--text);
+    }
+
+    .optional-tag {
+      font-weight: 400;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="date"],
+    input[type="search"],
+    textarea {
+      width: 100%;
+      font-size: 1rem;
+      padding: 0.7rem 0.85rem;
+      min-height: 48px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+    }
+
+    @media (pointer: coarse) {
+      input, button {
+        min-height: 52px;
+      }
+    }
+
+    textarea {
+      min-height: 78px;
+      resize: vertical;
+    }
+
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible,
+    button:focus-visible {
+      outline: 3px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    input:invalid:user-invalid {
+      border-color: var(--danger);
+      background: #fef2f2;
+    }
+
+    .photo-box {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--surface-muted);
+      margin-block-end: 1.1rem;
+      text-align: center;
+    }
+
+    .photo-preview, .camera-video {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-actions {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.65rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.65rem 1rem;
+      min-height: 48px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      width: 100%;
+    }
+
+    .btn-danger {
+      background: #fef2f2;
+      color: var(--danger);
+      border-color: #fecaca;
+    }
+
+    fieldset.radio-fieldset {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.85rem;
+      margin: 0 0 1rem;
+    }
+
+    .radio-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem;
+      border: 1.5px solid var(--border);
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .detail-photo {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: contain;
+      background: #0f172a;
+      border-radius: 12px;
+      margin-block-end: 1rem;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      margin-block-end: 1rem;
+    }
+
+    .meta-box {
+      background: var(--surface-muted);
+      padding: 0.65rem 0.8rem;
+      border-radius: 10px;
+    }
+
+    .meta-label {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      display: block;
+    }
+
+    .meta-value {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .detail-section {
+      background: var(--surface-muted);
+      padding: 0.75rem 0.9rem;
+      border-radius: 10px;
+      margin-block-end: 0.85rem;
+    }
+
+    .detail-section h3 {
+      margin: 0 0 0.25rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .detail-section p {
+      margin: 0;
+      white-space: pre-wrap;
+    }
+
+    .error-msg {
+      color: var(--danger);
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- VISTA 1: Sistema de Usuarios (Iniciar Sesión / Crear Cuenta) -->
+  <section id="auth-view" class="auth-shell" hidden>
+    <div class="auth-card">
+      <h1 class="auth-brand">📦 Inventario Personal</h1>
+
+      <div class="tabs-row" role="tablist" aria-label="Acceso de usuario" style="margin-block-end: 1rem;">
+        <button type="button" class="tab-btn" id="auth-tab-login" role="tab" aria-selected="true">
+          Iniciar sesión
+        </button>
+        <button type="button" class="tab-btn" id="auth-tab-register" role="tab" aria-selected="false">
+          Crear cuenta
+        </button>
+      </div>
+
+      <!-- Formulario de Inicio de Sesión -->
+      <form id="login-form" method="POST" action="/api/auth/login">
+        <div class="form-group">
+          <label for="login-email">Correo electrónico</label>
+          <input
+            type="email"
+            id="login-email"
+            name="email"
+            autocomplete="username"
+            spellcheck="false"
+            enterkeyhint="next"
+            required
+            placeholder="ejemplo@correo.com"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="login-password">Contraseña</label>
+          <div class="password-row">
+            <input
+              type="password"
+              id="login-password"
+              name="password"
+              autocomplete="current-password"
+              enterkeyhint="done"
+              required
+            >
+            <button
+              type="button"
+              class="toggle-pwd-btn"
+              data-target="login-password"
+              aria-pressed="false"
+              aria-label="Mostrar contraseña"
+            >Mostrar</button>
+          </div>
+        </div>
+
+        <p id="login-error" class="error-msg" role="alert" hidden></p>
+
+        <button type="submit" id="login-submit-btn" class="btn btn-primary">
+          Iniciar sesión
+        </button>
+      </form>
+
+      <!-- Formulario de Registro -->
+      <form id="register-form" method="POST" action="/api/auth/register" hidden>
+        <div class="form-group">
+          <label for="register-email">Correo electrónico</label>
+          <input
+            type="email"
+            id="register-email"
+            name="email"
+            autocomplete="username"
+            spellcheck="false"
+            enterkeyhint="next"
+            required
+            placeholder="tu@correo.com"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="register-password">Contraseña (mín. 6 caracteres)</label>
+          <div class="password-row">
+            <input
+              type="password"
+              id="register-password"
+              name="new-password"
+              autocomplete="new-password"
+              minlength="6"
+              enterkeyhint="done"
+              required
+            >
+            <button
+              type="button"
+              class="toggle-pwd-btn"
+              data-target="register-password"
+              aria-pressed="false"
+              aria-label="Mostrar contraseña"
+            >Mostrar</button>
+          </div>
+        </div>
+
+        <p id="register-error" class="error-msg" role="alert" hidden></p>
+
+        <button type="submit" id="register-submit-btn" class="btn btn-primary">
+          Crear cuenta
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- VISTA 2: Index Básico del Inventario por Usuario -->
+  <div id="app-view" class="app-shell" hidden>
+    <label for="quick-camera-input" class="visually-hidden">Capturar foto del objeto</label>
+    <input
+      type="file"
+      id="quick-camera-input"
+      class="visually-hidden"
+      accept="image/*"
+      capture="environment"
+    >
+
+    <header class="app-header">
+      <div class="header-top">
+        <h1 class="app-title">📦 Mi Inventario</h1>
+
+        <div class="user-session-bar">
+          <span id="user-role-badge" class="role-badge">user</span>
+          <span id="user-email-display" class="user-email-label"></span>
+
+          <!-- Controles exclusivos para Admin -->
+          <label for="user-select" class="visually-hidden">Ver inventario de usuario</label>
+          <select id="user-select" class="user-select" hidden></select>
+          <button type="button" id="new-user-btn" class="icon-btn" title="Crear usuario (Admin)" hidden>+ Usuario</button>
+
+          <button type="button" id="logout-btn" class="icon-btn">Salir</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="tabs-row" role="tablist" aria-label="Estado de los objetos">
+          <button type="button" class="tab-btn" role="tab" id="tab-activos" aria-selected="true">
+            En Inventario (<span id="count-activos">0</span>)
+          </button>
+          <button type="button" class="tab-btn" role="tab" id="tab-bajas" aria-selected="false">
+            Dados de Baja (<span id="count-bajas">0</span>)
+          </button>
+        </div>
+
+        <div class="search-summary-row">
+          <label for="search-input" class="visually-hidden">Buscar objeto</label>
+          <input
+            type="search"
+            id="search-input"
+            class="search-input"
+            placeholder="Buscar objeto..."
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            enterkeyhint="search"
+          >
+          <div id="total-value-pill" class="summary-pill">$0.00</div>
+          <button type="button" id="toggle-select-all-btn" class="select-mode-btn" aria-pressed="false">
+            ☑️ Seleccionar visibles
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-container">
+      <div id="gallery-grid" class="gallery-grid" aria-live="polite"></div>
+    </main>
+
+    <nav class="bottom-dock" aria-label="Acciones de inventario">
+      <button type="button" id="btn-launch-add" class="fab-add">
+        📸 Sacar Foto y Añadir Objeto
+      </button>
+
+      <!-- Barra flotante cuando hay objetos seleccionados para la lista -->
+      <div id="selection-bar" class="selection-bar" hidden>
+        <span id="selection-count-label" style="font-weight: 700; font-size: 0.92rem;">0 seleccionados</span>
+        <div class="selection-bar-actions">
+          <button type="button" id="btn-clear-selection" class="icon-btn" style="background: transparent; color: #fff; border-color: #475569;">
+            Limpiar
+          </button>
+          <button type="button" id="btn-open-list-modal" class="btn btn-primary" style="width: auto; min-height: 40px; padding: 0.45rem 0.9rem;">
+            📋 Crear Lista Texto
+          </button>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <!-- MODAL 1: Añadir Objeto (Foto + Formulario Simple) -->
+  <dialog id="add-dialog" aria-labelledby="add-dialog-title">
+    <div class="dialog-header">
+      <h2 id="add-dialog-title">Añadir Objeto</h2>
+      <button type="button" class="icon-btn" id="close-add-dialog" aria-label="Cerrar">✕</button>
+    </div>
+
+    <form id="add-form" class="dialog-body" method="POST" action="/api/items">
+      <div class="photo-box">
+        <img id="photo-preview" class="photo-preview" alt="Vista previa del objeto" hidden>
+        <video id="camera-video" class="camera-video" autoplay playsinline muted hidden></video>
+        <div class="photo-actions">
+          <button type="button" id="btn-take-camera" class="btn">📷 Cámara</button>
+          <button type="button" id="btn-shutter" class="btn btn-primary" hidden>🔴 Capturar Foto</button>
+          <button type="button" id="btn-pick-file" class="btn">🖼️ Galería / Archivo</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="item-nombre">Nombre *</label>
+        <input type="text" id="item-nombre" name="nombre" required maxlength="120" enterkeyhint="next" placeholder="Ej: Cámara, Bicicleta, Taladro...">
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label for="item-fecha-obtenido">Fecha obtenido *</label>
+          <input type="date" id="item-fecha-obtenido" name="fecha_obtenido" required>
+        </div>
+
+        <div class="form-group">
+          <label for="item-precio">Precio <span class="optional-tag">(opcional)</span></label>
+          <input type="number" id="item-precio" name="precio" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="item-descripcion">Descripción <span class="optional-tag">(opcional)</span></label>
+        <textarea id="item-descripcion" name="descripcion" rows="2" placeholder="Descripción opcional..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="item-detalles">Detalles relacionados con el objeto <span class="optional-tag">(opcional)</span></label>
+        <textarea id="item-detalles" name="detalles" rows="2" placeholder="Ubicación, serie, estado, garantía..."></textarea>
+      </div>
+
+      <p id="add-error" class="error-msg" role="alert" hidden></p>
+
+      <button type="submit" id="submit-add-btn" class="btn btn-primary">
+        Añadir al Inventario
+      </button>
+    </form>
+  </dialog>
+
+  <!-- MODAL 2: Detalle del Objeto y Dar de Baja -->
+  <dialog id="detail-dialog" aria-labelledby="detail-dialog-title" closedby="any">
+    <div class="dialog-header">
+      <h2 id="detail-dialog-title">Detalle del Objeto</h2>
+      <button type="button" class="icon-btn" id="close-detail-dialog" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="dialog-body" id="detail-body"></div>
+  </dialog>
+
+  <!-- MODAL 3: Crear Usuario (Solo Admin) -->
+  <dialog id="user-dialog" aria-labelledby="user-dialog-title" closedby="any">
+    <div class="dialog-header">
+      <h2 id="user-dialog-title">Crear Usuario</h2>
+      <button type="button" class="icon-btn" id="close-user-dialog" aria-label="Cerrar">✕</button>
+    </div>
+    <form id="user-form" class="dialog-body" method="POST" action="/api/users">
+      <div class="form-group">
+        <label for="new-user-email">Correo electrónico *</label>
+        <input type="email" id="new-user-email" name="email" spellcheck="false" required placeholder="usuario@correo.com">
+      </div>
+      <div class="form-group">
+        <label for="new-user-password">Contraseña *</label>
+        <input type="password" id="new-user-password" name="new-password" autocomplete="new-password" required minlength="6">
+      </div>
+      <fieldset class="radio-fieldset">
+        <legend>Rol del usuario</legend>
+        <div class="radio-grid" style="grid-template-columns: 1fr 1fr;">
+          <label class="radio-option">
+            <input type="radio" name="role" value="user" checked>
+            <span>Usuario</span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="role" value="admin">
+            <span>Admin</span>
+          </label>
+        </div>
+      </fieldset>
+      <p id="user-create-error" class="error-msg" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary">Crear cuenta</button>
+    </form>
+  </dialog>
+
+  <!-- MODAL 4: Crear y Compartir Lista en Texto -->
+  <dialog id="list-dialog" aria-labelledby="list-dialog-title" closedby="any">
+    <div class="dialog-header">
+      <h2 id="list-dialog-title">📋 Lista para Compartir</h2>
+      <button type="button" class="icon-btn" id="close-list-dialog" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="dialog-body">
+      <div class="form-group">
+        <label for="list-custom-title">Título de la lista</label>
+        <input
+          type="text"
+          id="list-custom-title"
+          name="list_title"
+          value="Lista de Inventario"
+          maxlength="80"
+          placeholder="Ej: Mudanza, Objetos en venta, Mi inventario..."
+        >
+      </div>
+
+      <fieldset style="border: 0; padding: 0; margin: 0;">
+        <legend>Datos a incluir en el texto</legend>
+        <div class="check-options-row">
+          <label class="check-pill">
+            <input type="checkbox" id="opt-include-price" checked>
+            <span>Precios y total</span>
+          </label>
+          <label class="check-pill">
+            <input type="checkbox" id="opt-include-desc" checked>
+            <span>Descripción y detalles</span>
+          </label>
+          <label class="check-pill">
+            <input type="checkbox" id="opt-include-dates">
+            <span>Fechas</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="form-group">
+        <label for="list-text-output">Texto generado (editable antes de compartir)</label>
+        <textarea id="list-text-output" rows="8" style="font-family: ui-monospace, monospace; font-size: 0.9rem;"></textarea>
+      </div>
+
+      <p id="share-feedback" role="status" aria-live="polite" style="color: var(--emerald); font-weight: 700; margin: 0 0 0.75rem;" hidden></p>
+
+      <div class="form-row-2">
+        <button type="button" id="btn-copy-list" class="btn">
+          📋 Copiar Texto
+        </button>
+        <button type="button" id="btn-share-list" class="btn btn-primary">
+          📲 Compartir
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

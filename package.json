@@ -1,0 +1,11 @@
+{
+  "name": "inventario-organizador",
+  "version": "1.0.0",
+  "description": "Organizador de inventario personal mobile-first con SQLite local y Cloud Storage local",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node server.js --test"
+  }
+}
+

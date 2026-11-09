@@ -136,6 +136,7 @@ function parseItemFields(body, current = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw httpError(400, 'Fecha obtenido inválida (AAAA-MM-DD).');
   return {
     nombre,
+    categoria: str(pick('categoria')) || 'General',
     descripcion: str(pick('descripcion')),
     detalles: str(pick('detalles')),
     marca: str(pick('marca')),
@@ -405,10 +406,28 @@ export const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, rows.map((r) => r.guardado_en));
     }
 
+    // --- Categorías del inventario (con conteo + categorías base sugeridas) ---
+    if (pathname === '/api/categorias' && req.method === 'GET') {
+      const user = requireAuth(req);
+      const uid = targetUserId(user, searchParams.get('userId'));
+      const rows = db.prepare(`
+        SELECT categoria, COUNT(*) AS count
+        FROM items
+        WHERE user_id = ? AND fecha_baja IS NULL
+        GROUP BY categoria
+        ORDER BY count DESC, categoria ASC
+      `).all(uid);
+      const base = ['Tecnología', 'Ropa', 'Cables y Adaptadores', 'Hogar', 'Herramientas', 'Insumos PC', 'Accesorios', 'General'];
+      const sugerencias = Array.from(new Set([...rows.map((r) => r.categoria), ...base]));
+      return sendJson(res, 200, { categorias: rows, sugerencias });
+    }
+
     // --- Listado de objetos ---
     if (pathname === '/api/items' && req.method === 'GET') {
       const user = requireAuth(req);
       const estado = searchParams.get('estado') || 'activos';
+      const categoria = (searchParams.get('categoria') || '').trim();
+      const limit = Number(searchParams.get('limit')) || 0;
       const q = (searchParams.get('q') || '').trim();
 
       let sql = `
@@ -426,11 +445,20 @@ export const server = http.createServer(async (req, res) => {
       if (estado === 'activos') sql += ` AND i.fecha_baja IS NULL`;
       else if (estado === 'bajas') sql += ` AND i.fecha_baja IS NOT NULL`;
 
+      if (categoria) {
+        sql += ` AND i.categoria = ? COLLATE NOCASE`;
+        params.push(categoria);
+      }
+
       if (q) {
-        sql += ` AND (i.nombre LIKE ? OR i.descripcion LIKE ? OR i.detalles LIKE ? OR i.marca LIKE ? OR i.modelo LIKE ? OR i.guardado_en LIKE ?)`;
-        params.push(...Array(6).fill(`%${q}%`));
+        sql += ` AND (i.nombre LIKE ? OR i.categoria LIKE ? OR i.descripcion LIKE ? OR i.detalles LIKE ? OR i.marca LIKE ? OR i.modelo LIKE ? OR i.guardado_en LIKE ?)`;
+        params.push(...Array(7).fill(`%${q}%`));
       }
       sql += ` ORDER BY i.id DESC`;
+      if (limit > 0) {
+        sql += ` LIMIT ?`;
+        params.push(limit);
+      }
 
       const rows = db.prepare(sql).all(...params).map(({ portada_key, contiene_json, ...row }) => ({
         ...row,
@@ -450,9 +478,9 @@ export const server = http.createServer(async (req, res) => {
 
       const id = tx(db, () => {
         const result = db.prepare(`
-          INSERT INTO items (user_id, nombre, descripcion, detalles, marca, modelo, guardado_en, cantidad, precio, moneda, fecha_obtenido)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(ownerId, f.nombre, f.descripcion, f.detalles, f.marca, f.modelo, f.guardado_en, f.cantidad, f.precio, f.moneda, f.fecha_obtenido);
+          INSERT INTO items (user_id, nombre, categoria, descripcion, detalles, marca, modelo, guardado_en, cantidad, precio, moneda, fecha_obtenido)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(ownerId, f.nombre, f.categoria, f.descripcion, f.detalles, f.marca, f.modelo, f.guardado_en, f.cantidad, f.precio, f.moneda, f.fecha_obtenido);
         const newId = Number(result.lastInsertRowid);
         if (body.relaciones) setRelations({ id: newId, user_id: ownerId }, body.relaciones);
         return newId;
@@ -472,10 +500,10 @@ export const server = http.createServer(async (req, res) => {
         const f = parseItemFields(body, item);
         tx(db, () => {
           db.prepare(`
-            UPDATE items SET nombre = ?, descripcion = ?, detalles = ?, marca = ?, modelo = ?, guardado_en = ?,
+            UPDATE items SET nombre = ?, categoria = ?, descripcion = ?, detalles = ?, marca = ?, modelo = ?, guardado_en = ?,
               cantidad = ?, precio = ?, moneda = ?, fecha_obtenido = ?
             WHERE id = ?
-          `).run(f.nombre, f.descripcion, f.detalles, f.marca, f.modelo, f.guardado_en, f.cantidad, f.precio, f.moneda, f.fecha_obtenido, item.id);
+          `).run(f.nombre, f.categoria, f.descripcion, f.detalles, f.marca, f.modelo, f.guardado_en, f.cantidad, f.precio, f.moneda, f.fecha_obtenido, item.id);
           if ('relaciones' in body) setRelations(item, body.relaciones);
         });
         return sendJson(res, 200, getItemDetail(item.id));

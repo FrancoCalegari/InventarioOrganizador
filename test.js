@@ -51,12 +51,21 @@ try {
       body: body ? JSON.stringify(body) : undefined
     });
 
-  // 2. Campos nuevos + moneda por defecto ARS
-  const neceser = await (await api('/api/items', 'POST', { nombre: 'Neceser', marca: 'Samsonite', precio: 25000, guardado_en: 'Placard' })).json();
+  // 2. Campos nuevos + moneda por defecto ARS + categorías
+  const neceser = await (await api('/api/items', 'POST', { nombre: 'Neceser', categoria: 'Accesorios', marca: 'Samsonite', precio: 25000, guardado_en: 'Placard' })).json();
   assert.equal(neceser.moneda, 'ARS');
+  assert.equal(neceser.categoria, 'Accesorios');
   assert.equal(neceser.cantidad, 1);
-  const cepillo = await (await api('/api/items', 'POST', { nombre: 'Cepillo', modelo: 'Pro 3', cantidad: 3, precio: 10, moneda: 'USD' })).json();
+  const cepillo = await (await api('/api/items', 'POST', { nombre: 'Cepillo', categoria: 'Hogar', modelo: 'Pro 3', cantidad: 3, precio: 10, moneda: 'USD' })).json();
   assert.equal(cepillo.moneda, 'USD');
+  assert.equal(cepillo.categoria, 'Hogar');
+  const catsRes = await (await api('/api/categorias')).json();
+  assert.ok(catsRes.categorias.some((c) => c.categoria === 'Accesorios'));
+  const filteredByCat = await (await api('/api/items?categoria=Accesorios')).json();
+  assert.equal(filteredByCat.length, 1);
+  assert.equal(filteredByCat[0].id, neceser.id);
+  const limited = await (await api('/api/items?limit=1')).json();
+  assert.equal(limited.length, 1);
   assert.equal((await api('/api/items', 'POST', { nombre: 'X', moneda: 'EUR' })).status, 400);
   assert.equal((await api('/api/items', 'POST', { nombre: 'X', cantidad: 0 })).status, 400);
 

@@ -18,10 +18,14 @@ if (!('closedBy' in HTMLDialogElement.prototype)) {
 const state = {
   currentUser: null,
   selectedUserId: null,
+  tab: 'dashboard', // 'dashboard' | 'activos' | 'bajas'
   estado: 'activos',
+  categoria: '',
+  groupByCategory: true,
   q: '',
   items: [],
   allActiveItems: [], // para el selector de relaciones
+  categorias: [], // [{ categoria, count }]
   selectedItems: new Map(),
   editingItemId: null,
   mediaQueue: [], // [{ blob, type, previewUrl, name }]
@@ -50,14 +54,21 @@ const jobsBtn = document.getElementById('jobs-btn');
 const newUserBtn = document.getElementById('new-user-btn');
 const logoutBtn = document.getElementById('logout-btn');
 
+const tabDashboard = document.getElementById('tab-dashboard');
 const tabActivos = document.getElementById('tab-activos');
 const tabBajas = document.getElementById('tab-bajas');
 const countActivos = document.getElementById('count-activos');
 const countBajas = document.getElementById('count-bajas');
 const searchInput = document.getElementById('search-input');
 const totalValuePill = document.getElementById('total-value-pill');
-const galleryGrid = document.getElementById('gallery-grid');
+const toggleGroupSectionsBtn = document.getElementById('toggle-group-sections-btn');
+const categoryFilterStrip = document.getElementById('category-filter-strip');
+const dashboardBanner = document.getElementById('dashboard-banner');
+const viewHeading = document.getElementById('view-heading');
+const btnGoFullInventory = document.getElementById('btn-go-full-inventory');
+const inventoryContainer = document.getElementById('inventory-container');
 const guardadoEnList = document.getElementById('guardado-en-list');
+const categoriasList = document.getElementById('categorias-list');
 
 // Inputs de Multimedia y Modal de Alta/Edición
 const quickCameraInput = document.getElementById('quick-camera-input');
@@ -431,9 +442,64 @@ async function loadGuardadoEnSuggestions() {
   }
 }
 
+async function loadCategorias() {
+  const userId = state.selectedUserId || state.currentUser.id;
+  const res = await fetch(`/api/categorias?userId=${userId}`);
+  if (!res.ok) return;
+  const { categorias, sugerencias } = await res.json();
+  state.categorias = categorias || [];
+
+  categoriasList.replaceChildren();
+  for (const cat of sugerencias || []) {
+    const opt = document.createElement('option');
+    opt.value = cat;
+    categoriasList.appendChild(opt);
+  }
+  renderCategoryStrip();
+}
+
+function renderCategoryStrip() {
+  categoryFilterStrip.replaceChildren();
+  const totalCount = state.categorias.reduce((acc, c) => acc + c.count, 0);
+
+  const allChip = document.createElement('button');
+  allChip.type = 'button';
+  allChip.className = 'cat-chip';
+  allChip.setAttribute('aria-pressed', String(state.categoria === ''));
+  allChip.textContent = `Todas (${totalCount})`;
+  allChip.addEventListener('click', () => {
+    state.categoria = '';
+    renderCategoryStrip();
+    loadItems();
+  });
+  categoryFilterStrip.appendChild(allChip);
+
+  for (const c of state.categorias) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'cat-chip';
+    chip.setAttribute('aria-pressed', String(state.categoria === c.categoria));
+    chip.textContent = `🏷️ ${c.categoria} (${c.count})`;
+    chip.addEventListener('click', () => {
+      state.categoria = state.categoria === c.categoria ? '' : c.categoria;
+      renderCategoryStrip();
+      loadItems();
+    });
+    categoryFilterStrip.appendChild(chip);
+  }
+}
+
 async function loadItems() {
   const userId = String(state.selectedUserId || state.currentUser.id);
-  const params = new URLSearchParams({ userId, estado: state.estado, q: state.q });
+  const isDashboard = state.tab === 'dashboard';
+  const estado = isDashboard ? 'activos' : state.tab;
+  const params = new URLSearchParams({
+    userId,
+    estado,
+    categoria: state.categoria,
+    limit: isDashboard ? '10' : '0',
+    q: state.q
+  });
   const [res, activeRes] = await Promise.all([
     fetch(`/api/items?${params}`),
     fetch(`/api/items?userId=${userId}&estado=activos`)
@@ -447,7 +513,7 @@ async function loadItems() {
 
 async function refreshAll() {
   if (!state.currentUser) return;
-  await Promise.all([loadUsers(), loadItems(), loadGuardadoEnSuggestions()]);
+  await Promise.all([loadUsers(), loadCategorias(), loadItems(), loadGuardadoEnSuggestions()]);
 }
 
 function schedulePendingMediaPoll() {
@@ -478,141 +544,194 @@ function computeTotalsText(items) {
   return parts.join(' · ');
 }
 
+function createItemCard(item) {
+  if (state.selectedItems.has(item.id)) state.selectedItems.set(item.id, item);
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'item-card-wrapper';
+
+  const card = document.createElement('div');
+  card.className = 'item-card';
+  card.dataset.selected = String(state.selectedItems.has(item.id));
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+  card.setAttribute('aria-label', `Ver detalle de ${item.nombre}`);
+  card.addEventListener('click', () => openItemDetail(item.id));
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openItemDetail(item.id);
+    }
+  });
+
+  const thumbWrap = document.createElement('div');
+  thumbWrap.className = 'thumb-wrap';
+
+  if (item.portada_url) {
+    const img = document.createElement('img');
+    img.src = item.portada_url;
+    img.alt = item.nombre;
+    img.loading = 'lazy';
+    thumbWrap.appendChild(img);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'thumb-placeholder';
+    ph.textContent = item.media_pendientes > 0 ? '🎬' : '📦';
+    thumbWrap.appendChild(ph);
+  }
+
+  const checkLabel = document.createElement('label');
+  checkLabel.className = 'card-check-label';
+  checkLabel.title = 'Seleccionar para lista';
+  checkLabel.addEventListener('click', (e) => e.stopPropagation());
+  const checkInput = document.createElement('input');
+  checkInput.type = 'checkbox';
+  checkInput.checked = state.selectedItems.has(item.id);
+  checkInput.setAttribute('aria-label', `Seleccionar ${item.nombre}`);
+  checkInput.addEventListener('change', () => {
+    toggleItemSelection(item, checkInput.checked);
+    card.dataset.selected = String(checkInput.checked);
+  });
+  checkLabel.appendChild(checkInput);
+  thumbWrap.appendChild(checkLabel);
+
+  if (item.cantidad > 1) {
+    const qtyBadge = document.createElement('span');
+    qtyBadge.className = 'badge-qty';
+    qtyBadge.textContent = `×${item.cantidad}`;
+    thumbWrap.appendChild(qtyBadge);
+  }
+
+  if (item.precio !== null && item.precio !== undefined) {
+    const priceBadge = document.createElement('span');
+    priceBadge.className = 'badge-price';
+    priceBadge.textContent = formatMoney(item.precio, item.moneda);
+    thumbWrap.appendChild(priceBadge);
+  }
+
+  if (item.motivo_baja) {
+    const statusBadge = document.createElement('span');
+    statusBadge.className = 'badge-status';
+    statusBadge.dataset.motivo = item.motivo_baja;
+    statusBadge.textContent = MOTIVO_LABELS[item.motivo_baja] || item.motivo_baja;
+    thumbWrap.appendChild(statusBadge);
+  } else if (item.media_pendientes > 0) {
+    const procBadge = document.createElement('span');
+    procBadge.className = 'badge-status';
+    procBadge.dataset.motivo = 'procesando';
+    procBadge.textContent = '⏳ Video';
+    thumbWrap.appendChild(procBadge);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'card-body';
+
+  if (item.categoria) {
+    const catBadge = document.createElement('span');
+    catBadge.className = 'badge-cat';
+    catBadge.textContent = item.categoria;
+    body.appendChild(catBadge);
+  }
+
+  const title = document.createElement('h3');
+  title.className = 'card-title';
+  title.textContent = item.nombre;
+  body.appendChild(title);
+
+  const brandModel = [item.marca, item.modelo].filter(Boolean).join(' · ');
+  if (brandModel) {
+    const sub = document.createElement('p');
+    sub.className = 'card-sub';
+    sub.textContent = brandModel;
+    body.appendChild(sub);
+  }
+
+  if (item.guardado_en) {
+    const loc = document.createElement('p');
+    loc.className = 'card-sub';
+    loc.textContent = `📍 ${item.guardado_en}`;
+    body.appendChild(loc);
+  }
+
+  if (item.contiene?.length > 0) {
+    const relChip = document.createElement('span');
+    relChip.className = 'card-rel-chip';
+    relChip.textContent = `📦 Contiene ${item.contiene.length}`;
+    body.appendChild(relChip);
+  }
+
+  card.append(thumbWrap, body);
+  wrapper.appendChild(card);
+  return wrapper;
+}
+
 function renderGallery() {
-  galleryGrid.replaceChildren();
+  inventoryContainer.replaceChildren();
   totalValuePill.textContent = computeTotalsText(state.items);
+
+  const isDashboard = state.tab === 'dashboard';
+  dashboardBanner.hidden = !isDashboard;
+  toggleGroupSectionsBtn.hidden = isDashboard;
+  viewHeading.textContent = state.categoria
+    ? `🕒 Últimos objetos en "${state.categoria}"`
+    : '🕒 Últimos 10 objetos agregados';
 
   if (state.items.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.style.gridColumn = '1 / -1';
     const h2 = document.createElement('h2');
     h2.textContent =
-      state.estado === 'activos' ? 'Sin objetos en el inventario' : 'No hay objetos dados de baja';
+      state.tab === 'bajas' ? 'No hay objetos dados de baja' : 'Sin objetos en esta vista';
     const p = document.createElement('p');
     p.textContent =
-      state.estado === 'activos'
-        ? 'Pulsa "📸 Sacar Foto y Añadir Objeto" abajo para fotografiar y cargar un objeto.'
-        : 'Aquí aparecerán los objetos que se vendieron, desecharon o rompieron.';
+      state.tab === 'bajas'
+        ? 'Aquí aparecerán los objetos que se vendieron, desecharon o rompieron.'
+        : 'Pulsa "📸 Sacar Foto y Añadir Objeto" abajo para fotografiar y cargar un objeto.';
     empty.append(h2, p);
-    galleryGrid.appendChild(empty);
+    inventoryContainer.appendChild(empty);
     updateSelectionUI();
     return;
   }
 
-  for (const item of state.items) {
-    if (state.selectedItems.has(item.id)) state.selectedItems.set(item.id, item);
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'item-card-wrapper';
-
-    const card = document.createElement('div');
-    card.className = 'item-card';
-    card.dataset.selected = String(state.selectedItems.has(item.id));
-    card.tabIndex = 0;
-    card.setAttribute('role', 'button');
-    card.setAttribute('aria-label', `Ver detalle de ${item.nombre}`);
-    card.addEventListener('click', () => openItemDetail(item.id));
-    card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        openItemDetail(item.id);
-      }
-    });
-
-    const thumbWrap = document.createElement('div');
-    thumbWrap.className = 'thumb-wrap';
-
-    if (item.portada_url) {
-      const img = document.createElement('img');
-      img.src = item.portada_url;
-      img.alt = item.nombre;
-      img.loading = 'lazy';
-      thumbWrap.appendChild(img);
-    } else {
-      const ph = document.createElement('div');
-      ph.className = 'thumb-placeholder';
-      ph.textContent = item.media_pendientes > 0 ? '🎬' : '📦';
-      thumbWrap.appendChild(ph);
+  // En pestaña Inventario Completo (o Bajas) con "Por Secciones" activo: separar por secciones de categoría
+  if (!isDashboard && state.groupByCategory) {
+    const byCat = new Map();
+    for (const item of state.items) {
+      const cat = item.categoria || 'General';
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(item);
     }
 
-    // Checkbox para armar lista
-    const checkLabel = document.createElement('label');
-    checkLabel.className = 'card-check-label';
-    checkLabel.title = 'Seleccionar para lista';
-    checkLabel.addEventListener('click', (e) => e.stopPropagation());
-    const checkInput = document.createElement('input');
-    checkInput.type = 'checkbox';
-    checkInput.checked = state.selectedItems.has(item.id);
-    checkInput.setAttribute('aria-label', `Seleccionar ${item.nombre}`);
-    checkInput.addEventListener('change', () => {
-      toggleItemSelection(item, checkInput.checked);
-      card.dataset.selected = String(checkInput.checked);
-    });
-    checkLabel.appendChild(checkInput);
-    thumbWrap.appendChild(checkLabel);
+    for (const [catName, catItems] of byCat) {
+      const section = document.createElement('section');
+      section.className = 'category-section';
 
-    if (item.cantidad > 1) {
-      const qtyBadge = document.createElement('span');
-      qtyBadge.className = 'badge-qty';
-      qtyBadge.textContent = `×${item.cantidad}`;
-      thumbWrap.appendChild(qtyBadge);
+      const header = document.createElement('div');
+      header.className = 'category-section-header';
+
+      const h3 = document.createElement('h3');
+      h3.className = 'category-section-title';
+      h3.textContent = `🏷️ ${catName} (${catItems.length})`;
+
+      const subtotal = document.createElement('span');
+      subtotal.className = 'summary-pill';
+      subtotal.textContent = computeTotalsText(catItems);
+
+      header.append(h3, subtotal);
+      section.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'gallery-grid';
+      for (const item of catItems) grid.appendChild(createItemCard(item));
+
+      section.appendChild(grid);
+      inventoryContainer.appendChild(section);
     }
-
-    if (item.precio !== null && item.precio !== undefined) {
-      const priceBadge = document.createElement('span');
-      priceBadge.className = 'badge-price';
-      priceBadge.textContent = formatMoney(item.precio, item.moneda);
-      thumbWrap.appendChild(priceBadge);
-    }
-
-    if (item.motivo_baja) {
-      const statusBadge = document.createElement('span');
-      statusBadge.className = 'badge-status';
-      statusBadge.dataset.motivo = item.motivo_baja;
-      statusBadge.textContent = MOTIVO_LABELS[item.motivo_baja] || item.motivo_baja;
-      thumbWrap.appendChild(statusBadge);
-    } else if (item.media_pendientes > 0) {
-      const procBadge = document.createElement('span');
-      procBadge.className = 'badge-status';
-      procBadge.dataset.motivo = 'procesando';
-      procBadge.textContent = '⏳ Video';
-      thumbWrap.appendChild(procBadge);
-    }
-
-    const body = document.createElement('div');
-    body.className = 'card-body';
-
-    const title = document.createElement('h3');
-    title.className = 'card-title';
-    title.textContent = item.nombre;
-    body.appendChild(title);
-
-    const brandModel = [item.marca, item.modelo].filter(Boolean).join(' · ');
-    if (brandModel) {
-      const sub = document.createElement('p');
-      sub.className = 'card-sub';
-      sub.textContent = brandModel;
-      body.appendChild(sub);
-    }
-
-    if (item.guardado_en) {
-      const loc = document.createElement('p');
-      loc.className = 'card-sub';
-      loc.textContent = `📍 ${item.guardado_en}`;
-      body.appendChild(loc);
-    }
-
-    if (item.contiene?.length > 0) {
-      const relChip = document.createElement('span');
-      relChip.className = 'card-rel-chip';
-      relChip.textContent = `📦 Contiene ${item.contiene.length}`;
-      body.appendChild(relChip);
-    }
-
-    card.append(thumbWrap, body);
-    wrapper.appendChild(card);
-    galleryGrid.appendChild(wrapper);
+  } else {
+    const grid = document.createElement('div');
+    grid.className = 'gallery-grid';
+    for (const item of state.items) grid.appendChild(createItemCard(item));
+    inventoryContainer.appendChild(grid);
   }
 
   updateSelectionUI();
@@ -752,12 +871,12 @@ async function openItemDetail(itemId) {
   const metaGrid = document.createElement('div');
   metaGrid.className = 'meta-grid';
   metaGrid.append(
+    createMetaBox('Categoría', item.categoria || 'General'),
     createMetaBox('Precio unitario', formatMoney(item.precio, item.moneda) || 'Sin precio'),
     createMetaBox('Cantidad', `${item.cantidad} ${item.cantidad === 1 ? 'unidad' : 'unidades'}`),
     createMetaBox('Marca / Modelo', [item.marca, item.modelo].filter(Boolean).join(' · ') || 'No especificado'),
     createMetaBox('Guardado en', item.guardado_en || 'No especificado'),
-    createMetaBox('Fecha obtenido', item.fecha_obtenido),
-    createMetaBox('Carga al sistema', item.fecha_carga.slice(0, 16).replace('T', ' '))
+    createMetaBox('Fecha obtenido', item.fecha_obtenido)
   );
   detailBody.appendChild(metaGrid);
 
@@ -1002,6 +1121,7 @@ function openCreateModal() {
   clearMediaQueue();
   state.formRelations.clear();
   renderFormRelations();
+  document.getElementById('item-categoria').value = state.categoria || 'Tecnología';
   document.getElementById('item-fecha-obtenido').value = todayISO();
   document.getElementById('item-cantidad').value = '1';
   addForm.querySelector('input[name="moneda"][value="ARS"]').checked = true;
@@ -1023,6 +1143,7 @@ function openEditModal(item) {
   renderFormRelations();
 
   document.getElementById('item-nombre').value = item.nombre || '';
+  document.getElementById('item-categoria').value = item.categoria || 'General';
   document.getElementById('item-cantidad').value = String(item.cantidad || 1);
   document.getElementById('item-marca').value = item.marca || '';
   document.getElementById('item-modelo').value = item.modelo || '';
@@ -1120,6 +1241,7 @@ addForm.addEventListener('submit', async (e) => {
     const payload = {
       user_id: state.selectedUserId || state.currentUser.id,
       nombre: fd.get('nombre'),
+      categoria: fd.get('categoria') || 'General',
       cantidad: Number(fd.get('cantidad')) || 1,
       marca: fd.get('marca'),
       modelo: fd.get('modelo'),
@@ -1169,20 +1291,28 @@ addForm.addEventListener('submit', async (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. Filtros, Usuarios y Cola de Tareas de Video (Admin)
+// 7. Pestañas (Dashboard 10 últimos / Inventario Completo / Bajas), Categorías y Admin
 // ---------------------------------------------------------------------------
-tabActivos.addEventListener('click', () => {
-  state.estado = 'activos';
-  tabActivos.setAttribute('aria-selected', 'true');
-  tabBajas.setAttribute('aria-selected', 'false');
+function setActiveTab(tabName) {
+  state.tab = tabName;
+  tabDashboard.setAttribute('aria-selected', String(tabName === 'dashboard'));
+  tabActivos.setAttribute('aria-selected', String(tabName === 'activos'));
+  tabBajas.setAttribute('aria-selected', String(tabName === 'bajas'));
   loadItems();
-});
+}
 
-tabBajas.addEventListener('click', () => {
-  state.estado = 'bajas';
-  tabActivos.setAttribute('aria-selected', 'false');
-  tabBajas.setAttribute('aria-selected', 'true');
-  loadItems();
+tabDashboard.addEventListener('click', () => setActiveTab('dashboard'));
+tabActivos.addEventListener('click', () => setActiveTab('activos'));
+tabBajas.addEventListener('click', () => setActiveTab('bajas'));
+btnGoFullInventory.addEventListener('click', () => setActiveTab('activos'));
+
+toggleGroupSectionsBtn.addEventListener('click', () => {
+  state.groupByCategory = !state.groupByCategory;
+  toggleGroupSectionsBtn.setAttribute('aria-pressed', String(state.groupByCategory));
+  toggleGroupSectionsBtn.textContent = state.groupByCategory
+    ? '🗂️ Por Secciones'
+    : '📋 Vista Plana';
+  renderGallery();
 });
 
 searchInput.addEventListener('input', () => {
@@ -1339,6 +1469,7 @@ function buildShareableText() {
 
   items.forEach((item, idx) => {
     const qtyStr = item.cantidad > 1 ? ` ×${item.cantidad}` : '';
+    const catStr = item.categoria ? `[${item.categoria}] ` : '';
     const brandModel = incDesc ? [item.marca, item.modelo].filter(Boolean).join(' ') : '';
     const brandStr = brandModel ? ` (${brandModel})` : '';
     const priceStr =
@@ -1347,7 +1478,7 @@ function buildShareableText() {
         : '';
     const statusStr = item.motivo_baja ? ` [${MOTIVO_LABELS[item.motivo_baja]}]` : '';
 
-    lines.push(`${idx + 1}. ${item.nombre}${qtyStr}${brandStr}${priceStr}${statusStr}`);
+    lines.push(`${idx + 1}. ${catStr}${item.nombre}${qtyStr}${brandStr}${priceStr}${statusStr}`);
 
     if (incRel && item.contiene?.length > 0) {
       for (const child of item.contiene) {

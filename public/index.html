@@ -203,6 +203,96 @@
       gap: 0.25rem;
     }
 
+    .tabs-row-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .cat-filter-strip {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      overflow-x: auto;
+      padding-block: 0.15rem;
+      scrollbar-width: thin;
+    }
+
+    .cat-chip {
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.84rem;
+      font-weight: 600;
+      padding: 0.38rem 0.75rem;
+      min-height: 38px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .cat-chip[aria-pressed="true"] {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    .dashboard-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-block: 0.25rem 0.85rem;
+      flex-wrap: wrap;
+    }
+
+    .dashboard-section-head h2 {
+      margin: 0;
+      font-size: 1.08rem;
+      font-weight: 800;
+    }
+
+    .category-section {
+      margin-block-end: 1.6rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 0.9rem;
+      box-shadow: var(--shadow);
+    }
+
+    .category-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding-block-end: 0.65rem;
+      margin-block-end: 0.85rem;
+      border-block-end: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .category-section-title {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .badge-cat {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #0f172a;
+      background: #e2e8f0;
+      padding: 0.14rem 0.48rem;
+      border-radius: 6px;
+      align-self: flex-start;
+    }
+
     .tab-btn {
       border: 0;
       background: transparent;
@@ -1019,6 +1109,7 @@
     <input type="file" id="multi-media-input" class="visually-hidden" accept="image/*,video/*" multiple>
 
     <datalist id="guardado-en-list"></datalist>
+    <datalist id="categorias-list"></datalist>
 
     <header class="app-header">
       <div class="header-top">
@@ -1038,12 +1129,15 @@
       </div>
 
       <div class="toolbar">
-        <div class="tabs-row" role="tablist" aria-label="Estado de los objetos">
-          <button type="button" class="tab-btn" role="tab" id="tab-activos" aria-selected="true">
-            En Inventario (<span id="count-activos">0</span>)
+        <div class="tabs-row tabs-row-3" role="tablist" aria-label="Vistas del inventario">
+          <button type="button" class="tab-btn" role="tab" id="tab-dashboard" aria-selected="true">
+            🏠 Dashboard
+          </button>
+          <button type="button" class="tab-btn" role="tab" id="tab-activos" aria-selected="false">
+            📦 Inventario (<span id="count-activos">0</span>)
           </button>
           <button type="button" class="tab-btn" role="tab" id="tab-bajas" aria-selected="false">
-            Dados de Baja (<span id="count-bajas">0</span>)
+            🗄️ Bajas (<span id="count-bajas">0</span>)
           </button>
         </div>
 
@@ -1053,22 +1147,34 @@
             type="search"
             id="search-input"
             class="search-input"
-            placeholder="Buscar por nombre, marca, modelo, ubicación..."
+            placeholder="Buscar por nombre, categoría, marca, ubicación..."
             autocomplete="off"
             autocorrect="off"
             spellcheck="false"
             enterkeyhint="search"
           >
           <div id="total-value-pill" class="summary-pill">$ 0 ARS</div>
+          <button type="button" id="toggle-group-sections-btn" class="select-mode-btn" aria-pressed="true" hidden>
+            🗂️ Por Secciones
+          </button>
           <button type="button" id="toggle-select-all-btn" class="select-mode-btn" aria-pressed="false">
             ☑️ Seleccionar visibles
           </button>
         </div>
+
+        <!-- Barra horizontal de categorías -->
+        <div id="category-filter-strip" class="cat-filter-strip" role="region" aria-label="Filtrar por categoría"></div>
       </div>
     </header>
 
     <main class="main-container">
-      <div id="gallery-grid" class="gallery-grid" aria-live="polite"></div>
+      <div id="dashboard-banner" class="dashboard-section-head">
+        <h2 id="view-heading">🕒 Últimos 10 objetos agregados</h2>
+        <button type="button" id="btn-go-full-inventory" class="icon-btn" style="color: var(--primary); border-color: var(--primary);">
+          Ver inventario completo →
+        </button>
+      </div>
+      <div id="inventory-container" aria-live="polite"></div>
     </main>
 
     <nav class="bottom-dock" aria-label="Acciones de inventario">
@@ -1116,8 +1222,19 @@
           <input type="text" id="item-nombre" name="nombre" required maxlength="120" placeholder="Ej: Neceser, Tablet TCL 10...">
         </div>
         <div class="form-group">
+          <label for="item-categoria">Categoría *</label>
+          <input type="text" id="item-categoria" name="categoria" list="categorias-list" required maxlength="60" value="Tecnología" placeholder="Ej: Tecnología, Ropa, Hogar...">
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
           <label for="item-cantidad">Cantidad *</label>
           <input type="number" id="item-cantidad" name="cantidad" required min="1" step="1" value="1" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label for="item-guardado-en">Guardado en <span class="optional-tag">(opcional)</span></label>
+          <input type="text" id="item-guardado-en" name="guardado_en" list="guardado-en-list" maxlength="100" placeholder="Ej: Placard, Cajón escritorio...">
         </div>
       </div>
 
@@ -1134,34 +1251,28 @@
 
       <div class="form-row-2">
         <div class="form-group">
-          <label for="item-guardado-en">Guardado en <span class="optional-tag">(opcional)</span></label>
-          <input type="text" id="item-guardado-en" name="guardado_en" list="guardado-en-list" maxlength="100" placeholder="Ej: Placard, Cajón escritorio...">
-        </div>
-        <div class="form-group">
           <label for="item-fecha-obtenido">Fecha obtenido *</label>
           <input type="date" id="item-fecha-obtenido" name="fecha_obtenido" required>
         </div>
-      </div>
-
-      <div class="form-row-2">
         <div class="form-group">
           <label for="item-precio">Precio unitario <span class="optional-tag">(opcional)</span></label>
           <input type="number" id="item-precio" name="precio" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
         </div>
-        <fieldset class="radio-fieldset" style="margin-block-end: 0.95rem; padding: 0.5rem 0.65rem;">
-          <legend style="font-size: 0.84rem;">Moneda (default ARS)</legend>
-          <div class="radio-grid" style="grid-template-columns: 1fr 1fr;">
-            <label class="radio-option">
-              <input type="radio" name="moneda" value="ARS" checked>
-              <span>$ ARS</span>
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="moneda" value="USD">
-              <span>US$ USD</span>
-            </label>
-          </div>
-        </fieldset>
       </div>
+
+      <fieldset class="radio-fieldset" style="margin-block-end: 0.95rem; padding: 0.5rem 0.65rem;">
+        <legend style="font-size: 0.84rem;">Moneda (default ARS)</legend>
+        <div class="radio-grid" style="grid-template-columns: 1fr 1fr;">
+          <label class="radio-option">
+            <input type="radio" name="moneda" value="ARS" checked>
+            <span>$ ARS</span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="moneda" value="USD">
+            <span>US$ USD</span>
+          </label>
+        </div>
+      </fieldset>
 
       <!-- Relaciones: Objetos que este objeto contiene -->
       <div class="relations-box">
